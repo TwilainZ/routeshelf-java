@@ -8,6 +8,7 @@
 - 当前应用源码没有发现其他项目的版权声明、上游源码目录、Rust / aria2 实现、原生二进制或相关补丁。
 - 初始审查只阅读了 `mizorewww/gdirect` 的公开 README 和许可证元数据。随后按维护者“看一下原项目如何实现”的要求，通过 GitHub API 只读查阅了其 `auth.rs` 以及 `api.rs` / `store.rs` 中相关流程，用于比较桌面 OAuth 与 Android 授权方案；没有将其源码、测试或补丁导入工程。Android 授权、REST 及下载新增实现已在此次源码对照前提交。其 GPL-2.0 许可不会因功能启发或阅读对照而被替换为本项目许可，也不授权把其实现代码复制进来。
 - 新增 Drive REST 封装、会话管理、下载校验及测试在本仓库独立实现；Google 授权使用官方 Android SDK 客户端，不自行收集账户密码。
+- 随后按维护者要求核对了同一上游提交的 `scan.rs`，用于确认自动探测、24 小时缓存及探测与传输的行为；未导入、翻译或逐段改写其实现。Android 的 `DirectRoutes`、OkHttp 自定义 DNS/TLS 适配和回环 TLS 测试独立编写，没有使用上游测试文件或 IP 资产。新增 OkHttp/Okio 及仅测试使用的 MockWebServer/okhttp-tls 均为 Apache-2.0，声明已更新。
 - 标准 Gradle Wrapper 由 Gradle 8.9 生成，遵循 Gradle 的 Apache-2.0 许可证。Google、AndroidX、Kotlin 等依赖的条款单独列在 `THIRD_PARTY_NOTICES.md`。
 
 以上是对可见仓库及依赖元数据的来源审查记录，不能据此证明仓库以外的完整著作权链。

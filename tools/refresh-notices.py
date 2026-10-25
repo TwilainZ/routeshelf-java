@@ -93,7 +93,8 @@ development prerequisites governed by their SDK terms, not application-owned cod
 
 Test-only dependencies (not shipped in the APK): JUnit 4.13.2 (EPL-1.0),
 Hamcrest Core 1.3 (BSD-3-Clause), and Vaadin's Android JSON port
-0.0.20131108.vaadin1 (Apache-2.0). No implementation from mizorewww/gdirect or its
+0.0.20131108.vaadin1 (Apache-2.0), plus OkHttp MockWebServer and okhttp-tls
+4.12.0 (Apache-2.0). No implementation from mizorewww/gdirect or its
 aria2 patches is included. The historical ZIP in archive/ retains its GPL license.
 
 Bundled component license/copyright/notice texts and the Apache-2.0 license are
@@ -114,5 +115,5 @@ notice_path.write_text(inventory)
 asset = root / args.module / "src/main/assets/third-party-notices.txt"
 asset.parent.mkdir(parents=True, exist_ok=True)
 asset.write_text(inventory + "\n\n" + (root / "NOTICE").read_text()
-                 + "\n\n" + (root / "LICENSE").read_text() + "\n\n" + "\n".join(bundled))
+                 + "\n\n" + (root / "LICENSE").read_text() + "\n\n" + "\n".join(bundled).rstrip() + "\n")
 print(f"Recorded {len(coordinates)} runtime graph nodes and {len(bundled)} distinct bundled notices.")

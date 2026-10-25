@@ -16,8 +16,8 @@ android {
         applicationId 'dev.gdirect.lite'
         minSdk 29
         targetSdk 35
-        versionCode 3
-        versionName '0.2.1-diagnostic'
+        versionCode 4
+        versionName '0.3.0-direct-preview'
         buildConfigField 'String', 'REVISION', '"' + buildRevision + '"'
     }
 
@@ -37,7 +37,10 @@ android {
 dependencies {
     implementation 'com.google.android.gms:play-services-auth:21.6.0'
     implementation 'com.google.android.material:material:1.13.0'
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     testImplementation 'junit:junit:4.13.2'
     // Real JVM JSON implementation for testing the Android org.json model, not packaged in the APK.
     testImplementation 'com.vaadin.external.google:android-json:0.0.20131108.vaadin1'
+    testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
+    testImplementation 'com.squareup.okhttp3:okhttp-tls:4.12.0'
 }

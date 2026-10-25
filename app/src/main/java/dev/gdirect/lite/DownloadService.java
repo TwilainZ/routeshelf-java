@@ -88,6 +88,7 @@ public final class DownloadService extends Service {
         if (ACTION_STOP.equals(intent.getAction())) {
             if (thread == null || !thread.isAlive()) { stopSelf(startId); return START_NOT_STICKY; }
             cancelled.set(true);
+            thread.interrupt();
             status("正在取消…", snapshot.total);
             return START_NOT_STICKY;
         }

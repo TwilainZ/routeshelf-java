@@ -85,6 +85,7 @@ CI 另提供 `GDirectLite-inspector-RUN-ATTEMPT` 工件，包名为 `dev.gdirect
 
 - Token 只存在于当前应用进程内存，不写入 SharedPreferences / 数据库 / Bundle / Intent / URL / 日志。Google Play 服务自身的账户及授权缓存由系统组件管理。
 - 带 Authorization 的请求仅发往 `https://www.googleapis.com/drive/v3/files` 及受控文件子路径；拒绝所有重定向，使用系统 HTTPS 证书和主机名校验。私人 API 和下载不接收手工 IP 参数。
+- 私人文件 API 和下载现默认使用自动直连，和公开下载共享连接方式设置；证书仍按真实域名验证。官方授权、重新获取令牌及远端撤销走系统网络。直连的流程、限制与关闭代理的设备验收见 [DIRECT_NETWORK.md](DIRECT_NETWORK.md)。Cloud 配置正确不代表直连可达，直连可达也不能代替 OAuth 签名匹配。
 - 断开或切换会话会使旧列表请求及下载会话失效。启动私人下载的 Intent 仅含文件 ID 和非敏感会话代数。
 - 私人下载暂为单流；不会持久化跨会话续传信息。临时内容在应用缓存目录，完成、失败或取消后清理，进程异常退出的残留在下一次启动下载服务时清理。
 - 下载在核对元数据大小及可用的 MD5 后才发布到系统下载目录；MD5 用于检测传输错误或版本变化，不是安全签名。

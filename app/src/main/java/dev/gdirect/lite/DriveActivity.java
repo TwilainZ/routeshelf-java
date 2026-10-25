@@ -51,7 +51,7 @@ public final class DriveActivity extends AppCompatActivity {
     private final Deque<String[]> parents = new ArrayDeque<>();
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final FileAdapter adapter = new FileAdapter();
-    private TextView message, location, transfer, explanation;
+    private TextView message, location, transfer, explanation, networkStatus;
     private LinearLayout queryRow;
     private ListView fileList;
     private EditText search;
@@ -66,6 +66,7 @@ public final class DriveActivity extends AppCompatActivity {
     private boolean loading, authorizing, waitingResolution, wasConnected, transferActive, wasRevoking;
     private final Runnable ticker = new Runnable() {
         @Override public void run() {
+            networkStatus.setText(GoogleNetwork.get().summary());
             if (wasConnected && !DriveSession.INSTANCE.connected()) clearBrowser();
             if (wasRevoking && !GoogleAuthorization.revoking.get()) {
                 message.setText(GoogleAuthorization.lastRevokeSucceeded ? R.string.drive_revoked : R.string.drive_revoke_failed);
@@ -135,6 +136,9 @@ public final class DriveActivity extends AppCompatActivity {
         explanation = label(getString(R.string.drive_consent), 16);
         explanation.setPadding(0,dp(16),0,dp(12));
         root.addView(explanation);
+        networkStatus = label(GoogleNetwork.get().summary(),14);
+        networkStatus.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        root.addView(networkStatus);
         connect = button(R.string.drive_connect);
         connect.setOnClickListener(v -> authorize());
         root.addView(connect, new LinearLayout.LayoutParams(-1,-2));

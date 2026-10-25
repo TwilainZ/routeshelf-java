@@ -9,7 +9,7 @@ final class GoogleAuthorization {
     static volatile boolean lastRevokeSucceeded;
     static DriveTransport transport(Context context, DriveSession.Lease lease) {
         Context app = context.getApplicationContext();
-        return new DriveTransport(lease, () -> {
+        return new DriveTransport(lease, url -> GoogleNetwork.get().open(url, null, lease::requireCurrent), () -> {
             try {
                 String rejected = lease.token();
                 DriveSession.INSTANCE.invalidate(lease);

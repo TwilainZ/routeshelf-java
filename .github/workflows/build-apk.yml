@@ -58,7 +58,7 @@ jobs:
             --output app/build/outputs/verified-inspector
       - uses: actions/upload-artifact@v5
         with:
-          name: GDirectLite-0.2.1-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+          name: GDirectLite-0.3.0-direct-preview-${{ github.run_id }}-${{ github.run_attempt }}
           path: app/build/outputs/verified-apk/
           if-no-files-found: error
       - uses: actions/upload-artifact@v5

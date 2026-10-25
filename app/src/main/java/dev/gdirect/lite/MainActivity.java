@@ -26,7 +26,6 @@ import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
-import java.util.List;
 import java.util.Locale;
 
 public final class MainActivity extends Activity {
@@ -36,14 +35,20 @@ public final class MainActivity extends Activity {
     private static final int PALE = Color.rgb(242, 246, 253);
     private EditText linkInput, ipInput;
     private Spinner threads;
-    private TextView status, progressLabel;
+    private TextView status, progressLabel, networkStatus;
+    private Spinner networkMode;
+    private Thread scanThread;
     private ProgressBar progress;
     private Button scan, start, stop, open;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private DownloadService.Snapshot last;
     private final Runnable ticker = new Runnable() {
         @Override public void run() {
+            networkStatus.setText(GoogleNetwork.get().summary());
+            networkMode.setEnabled(!DownloadService.snapshot.active && scanThread == null);
             showSnapshot();
+            scan.setEnabled(scanThread != null || (!DownloadService.snapshot.active && !GoogleNetwork.get().systemNetwork()));
+            start.setEnabled(!DownloadService.snapshot.active && scanThread == null);
             handler.postDelayed(this, 500);
         }
     };
@@ -152,21 +157,59 @@ public final class MainActivity extends Activity {
         download.addView(paste, new LinearLayout.LayoutParams(-1,dp(49)));
 
         LinearLayout network = card(root);
-        heading(network, "直连网络", "自动扫描支持 HTTPS 校验的 Google IP，也可以留空使用系统网络。");
+        heading(network, "数据连接", "自动直连用于公开下载、私人文件浏览和下载。首次使用自动检测，成功后缓存 24 小时；网络切换或连接失败后重新检测。");
+        networkMode = new Spinner(this);
+        ArrayAdapter<String> modes = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item,
+            new String[]{"自动直连（无需手工找 IP）", "系统网络（使用设备网络设置）"});
+        modes.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        networkMode.setAdapter(modes);
+        networkMode.setMinimumHeight(dp(48));
+        networkMode.setContentDescription("数据连接方式");
+        networkMode.setSelection(GoogleNetwork.get().systemNetwork() ? 1 : 0);
+        networkMode.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
+                GoogleNetwork.get().systemNetwork(position == 1);
+                if (scan != null) scan.setEnabled(position == 0);
+            }
+            @Override public void onNothingSelected(android.widget.AdapterView<?> parent) { }
+        });
+        network.addView(networkMode);
+        networkStatus = text(GoogleNetwork.get().summary(), 14, INK, false);
+        networkStatus.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        network.addView(networkStatus);
+        space(network, 10);
+        scan = button("重新检测直连", false);
+        network.addView(scan, new LinearLayout.LayoutParams(-1,dp(49)));
+        scan.setEnabled(!GoogleNetwork.get().systemNetwork());
+        scan.setOnClickListener(v -> scanIps());
+        space(network, 8);
+        network.addView(text("登录及重新获取授权仍由 Google 服务连接系统网络。直连可用性取决于当前网络，VPN/TUN 可能接管连接。", 13, MUTED, false));
+        Button advanced = button("高级：指定公开下载 IP", false);
+        network.addView(advanced, new LinearLayout.LayoutParams(-1,-2));
+        LinearLayout manual = vertical();
+        manual.setVisibility(View.GONE);
+        TextView manualLabel = text("公开下载 IPv4（可选）", 14, INK, false);
+        manual.addView(manualLabel);
         ipInput = new EditText(this);
+        ipInput.setId(View.generateViewId());
         ipInput.setSingleLine(true);
         ipInput.setTextSize(14);
         ipInput.setTextColor(INK);
         ipInput.setInputType(android.text.InputType.TYPE_CLASS_PHONE);
-        ipInput.setHint("Google IPv4（留空 = 系统网络）");
+        ipInput.setHint("留空使用上方连接方式");
         ipInput.setHintTextColor(MUTED);
         ipInput.setBackground(rounded(PALE, Color.rgb(225,230,241)));
         ipInput.setPadding(dp(13), dp(14), dp(13), dp(14));
-        network.addView(ipInput, new LinearLayout.LayoutParams(-1,-2));
-        space(network, 10);
-        scan = button("扫描可用 IP", false);
-        network.addView(scan, new LinearLayout.LayoutParams(-1,dp(49)));
-        scan.setOnClickListener(v -> scanIps());
+        manualLabel.setLabelFor(ipInput.getId());
+        manual.addView(ipInput, new LinearLayout.LayoutParams(-1,-2));
+        manual.addView(text("仅覆盖本次公开下载；仍校验真实 Google 域名的证书。私人文件由自动直连或系统网络处理。",13,MUTED,false));
+        network.addView(manual);
+        advanced.setOnClickListener(v -> {
+            boolean visible = manual.getVisibility() != View.VISIBLE;
+            manual.setVisibility(visible ? View.VISIBLE : View.GONE);
+            if (!visible) ipInput.setText("");
+            advanced.setText(visible ? "收起高级设置" : "高级：指定公开下载 IP");
+        });
         space(network, 13);
         network.addView(text("并行连接数", 13, INK, true));
         threads = new Spinner(this);
@@ -212,7 +255,7 @@ public final class MainActivity extends Activity {
         space(root, 1);
         root.addView(text("实验性开源原型 · 严格 HTTPS 校验 · 公开文件无需登录", 12, MUTED, false));
         linkInput.setText(getPreferences(MODE_PRIVATE).getString("link", ""));
-        ipInput.setText(getPreferences(MODE_PRIVATE).getString("ip", ""));
+        // Do not carry an old scanner-selected IP into the automatic routing workflow.
         takeSharedIntent(getIntent());
     }
 
@@ -232,26 +275,19 @@ public final class MainActivity extends Activity {
         }
     }
     private void scanIps() {
-        scan.setEnabled(false);
-        status.setText("正在测试 Google IP 的 TLS 连接…");
-        new Thread(() -> {
+        if (scanThread != null) { scanThread.interrupt(); scan.setEnabled(false); return; }
+        scan.setText("取消检测");
+        GoogleNetwork.get().reset();
+        scanThread = new Thread(() -> {
             try {
-                List<DirectNet.ScanResult> results = DirectNet.scan();
-                runOnUiThread(() -> {
-                    scan.setEnabled(true);
-                    if (results.isEmpty()) {
-                        status.setText("没有找到直连 IP，可清空 IP 后使用系统网络。私人文件始终使用系统网络。");
-                    } else {
-                        ipInput.setText(results.get(0).ip);
-                        StringBuilder s = new StringBuilder("已选延迟最低的可用 IP：\n");
-                        for (int i = 0; i < Math.min(5, results.size()); i++) s.append(results.get(i)).append("\n");
-                        status.setText(s.toString().trim());
-                    }
-                });
-            } catch (Exception ex) {
-                runOnUiThread(() -> { scan.setEnabled(true); status.setText("扫描失败：" + ex.getMessage()); });
-            }
-        }, "gdirect-scan").start();
+                GoogleNetwork.get().checkRoutes();
+            } catch (java.io.IOException ignored) { /* Specific progress/failure is shown by the route manager. */ }
+            finally { runOnUiThread(() -> {
+                scanThread = null;
+                if (!isDestroyed()) { scan.setText("重新检测直连"); scan.setEnabled(!GoogleNetwork.get().systemNetwork()); }
+            }); }
+        }, "gdirect-scan");
+        scanThread.start();
     }
     private void beginDownload() {
         if (DownloadService.snapshot.active) { Toast.makeText(this, "已有下载正在进行", Toast.LENGTH_SHORT).show(); return; }
@@ -307,6 +343,7 @@ public final class MainActivity extends Activity {
     }
     @Override protected void onDestroy() {
         handler.removeCallbacks(ticker);
+        if (scanThread != null) scanThread.interrupt();
         super.onDestroy();
     }
     @Override protected void onStart() { super.onStart(); handler.post(ticker); }

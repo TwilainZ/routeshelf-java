@@ -14,10 +14,6 @@ final class DriveTransport {
     private final Connections connections;
     private final Runnable unauthorized;
 
-    DriveTransport(DriveSession.Lease lease, Runnable unauthorized) {
-        this(lease, url -> (HttpsURLConnection) url.openConnection(), unauthorized);
-    }
-
     DriveTransport(DriveSession.Lease lease, Connections connections, Runnable unauthorized) {
         this.lease = lease; this.connections = connections; this.unauthorized = unauthorized;
     }

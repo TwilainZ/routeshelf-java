@@ -3,27 +3,22 @@ package dev.gdirect.lite;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
-import java.net.Socket;
 import java.net.URL;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.net.ssl.HttpsURLConnection;
-import javax.net.ssl.SSLSocketFactory;
 
 /** Public Google Drive HTTP requests only; normal HTTPS certificate validation stays enabled. */
 final class DirectNet {
+    interface Connections { HttpsURLConnection open(URL url, String ip) throws IOException; }
+    static volatile Connections connections = (url, ip) -> {
+        if (ip != null) throw new IOException("Direct networking is not initialized");
+        return (HttpsURLConnection) url.openConnection();
+    };
     private DirectNet() {}
 
     static final class Probe {
@@ -36,13 +31,6 @@ final class DirectNet {
             this.finalUrl = url; this.size = size; this.ranges = ranges; this.filename = filename;
             this.etag = TransferRules.strongEtag(etag);
         }
-    }
-
-    static final class ScanResult {
-        final String ip;
-        final long millis;
-        ScanResult(String ip, long millis) { this.ip = ip; this.millis = millis; }
-        @Override public String toString() { return ip + "  ·  " + millis + " ms"; }
     }
 
     static String parseIp(String raw) {
@@ -97,8 +85,7 @@ final class DirectNet {
                     || (url.getPort() != -1 && url.getPort() != 443) || url.getUserInfo() != null) {
                 throw new IOException("服务器跳转到了不允许的地址，已停止下载");
             }
-            HttpsURLConnection connection = (HttpsURLConnection) (ip == null
-                ? url.openConnection() : url.openConnection(java.net.Proxy.NO_PROXY));
+            HttpsURLConnection connection = connections.open(url, ip);
             connection.setInstanceFollowRedirects(false);
             connection.setConnectTimeout(9000);
             connection.setReadTimeout(20000);
@@ -107,10 +94,6 @@ final class DirectNet {
             connection.setRequestProperty("Connection", "close");
             if (range != null) connection.setRequestProperty("Range", range);
             if (validator != null) connection.setRequestProperty("If-Range", validator);
-            if (ip != null) {
-                connection.setSSLSocketFactory(new DirectSocketFactory(
-                    (SSLSocketFactory) SSLSocketFactory.getDefault(), ip));
-            }
             int code;
             try { code = connection.getResponseCode(); }
             catch (IOException error) { connection.disconnect(); throw error; }
@@ -222,65 +205,4 @@ final class DirectNet {
         return TransferRules.safeFilename(name);
     }
 
-    static List<ScanResult> scan() throws IOException {
-        LinkedHashSet<String> candidates = new LinkedHashSet<>();
-        candidates.add("183.56.143.147"); // An untrusted candidate: HTTPS is ALWAYS checked.
-        for (String host : new String[]{"www.googleapis.com", "drive.usercontent.google.com", "drive.google.com"}) {
-            try {
-                for (InetAddress a : InetAddress.getAllByName(host)) {
-                    if (a.getAddress().length == 4 && !a.isLoopbackAddress() && !a.isSiteLocalAddress()) {
-                        byte[] b = a.getAddress();
-                        // Avoid Clash/Mihomo fake-IP networks (198.18.0.0/15).
-                        if ((b[0] & 255) == 198 && ((b[1] & 255) == 18 || (b[1] & 255) == 19)) continue;
-                        candidates.add(a.getHostAddress());
-                    }
-                }
-            } catch (Exception ignored) { /* DNS may be blocked */ }
-        }
-        List<ScanResult> good = new ArrayList<>();
-        for (String candidate : candidates) {
-            if (good.size() >= 6) break;
-            try {
-                long start = System.nanoTime();
-                HttpsURLConnection c = open(new URL("https://www.googleapis.com/drive/v3/about?fields=user"), candidate, null);
-                try {
-                    if (c.getResponseCode() == HttpURLConnection.HTTP_UNAUTHORIZED) {
-                        good.add(new ScanResult(candidate, (System.nanoTime() - start)/1_000_000));
-                    }
-                } finally { c.disconnect(); }
-            } catch (Exception ignored) { /* Certificate/network failure: discard candidate. */ }
-        }
-        good.sort(Comparator.comparingLong(r -> r.millis));
-        return good;
-    }
-
-    static final class DirectSocketFactory extends SSLSocketFactory {
-        private final SSLSocketFactory delegate;
-        private final String ip;
-        DirectSocketFactory(SSLSocketFactory delegate, String ip) { this.delegate = delegate; this.ip = ip; }
-        @Override public String[] getDefaultCipherSuites() { return delegate.getDefaultCipherSuites(); }
-        @Override public String[] getSupportedCipherSuites() { return delegate.getSupportedCipherSuites(); }
-        private Socket connect(String host, int port, InetAddress local, int localPort) throws IOException {
-            Socket raw = new Socket();
-            if (local != null) raw.bind(new InetSocketAddress(local, localPort));
-            raw.connect(new InetSocketAddress(InetAddress.getByName(ip), port), 8000);
-            return delegate.createSocket(raw, host, port, true);
-        }
-        @Override public Socket createSocket(Socket existing, String host, int port, boolean autoClose) throws IOException {
-            if (autoClose && existing != null) existing.close();
-            return connect(host, port, null, 0);
-        }
-        @Override public Socket createSocket(String host, int port) throws IOException {
-            return connect(host, port, null, 0);
-        }
-        @Override public Socket createSocket(String host, int port, InetAddress local, int localPort) throws IOException {
-            return connect(host, port, local, localPort);
-        }
-        @Override public Socket createSocket(InetAddress host, int port) throws IOException {
-            return connect(host.getHostAddress(), port, null, 0);
-        }
-        @Override public Socket createSocket(InetAddress host, int port, InetAddress local, int localPort) throws IOException {
-            return connect(host.getHostAddress(), port, local, localPort);
-        }
-    }
 }

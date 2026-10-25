@@ -47,7 +47,8 @@ final class AppDiagnostics {
         out.append("Play services availability: ").append(availability).append("\n");
         out.append("Authorization phase: ").append(phase).append("\n");
         out.append("Activity result: ").append(activityResult == null ? "none" : activityResult).append("\n");
-        out.append("Google status: ").append(sdkStatus == null ? "none" : sdkStatus);
+        out.append("Google status: ").append(sdkStatus == null ? "none" : sdkStatus).append("\n");
+        out.append("Data network: ").append(GoogleNetwork.get().summary());
         return out.toString();
     }
     private AppDiagnostics() { }
