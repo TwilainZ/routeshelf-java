@@ -97,6 +97,11 @@ public final class DriveActivity extends AppCompatActivity {
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved);
         folderName = getString(R.string.drive_root);
+        if (saved != null) {
+            authorizationPhase = saved.getString("authorization_phase","not-requested");
+            if (saved.containsKey("last_activity_result")) lastActivityResult = saved.getInt("last_activity_result");
+            if (saved.containsKey("last_sdk_status")) lastSdkStatus = saved.getInt("last_sdk_status");
+        }
         waitingResolution = saved != null && saved.getBoolean("waiting_resolution", false);
         authorizing = waitingResolution;
         LinearLayout container = column();
@@ -472,7 +477,13 @@ public final class DriveActivity extends AppCompatActivity {
             } catch (IOException error) { handler.post(() -> { if (!isDestroyed()) message.setText(R.string.licenses_unavailable); }); }
         },"gdirect-notices").start();
     }
-    @Override protected void onSaveInstanceState(Bundle state) { state.putBoolean("waiting_resolution",waitingResolution); super.onSaveInstanceState(state); }
+    @Override protected void onSaveInstanceState(Bundle state) {
+        state.putBoolean("waiting_resolution",waitingResolution);
+        state.putString("authorization_phase",authorizationPhase);
+        if (lastActivityResult != null) state.putInt("last_activity_result",lastActivityResult);
+        if (lastSdkStatus != null) state.putInt("last_sdk_status",lastSdkStatus);
+        super.onSaveInstanceState(state);
+    }
     @Override protected void onResume() { super.onResume(); handler.post(ticker); }
     @Override protected void onPause() { handler.removeCallbacks(ticker); super.onPause(); }
     @Override protected void onDestroy() {
