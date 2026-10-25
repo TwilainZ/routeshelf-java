@@ -204,7 +204,7 @@ public final class DriveActivity extends AppCompatActivity {
             .addOnFailureListener(error -> {
                 if (isDestroyed() || isFinishing()) return;
                 int code = error instanceof ApiException ? ((ApiException)error).getStatusCode() : -1;
-                authFailed(getString(code == 10 ? R.string.drive_auth_config : R.string.drive_auth_failed));
+                authStatusFailed(code);
             });
     }
 
@@ -212,9 +212,13 @@ public final class DriveActivity extends AppCompatActivity {
         super.onActivityResult(request,resultCode,data);
         if (request != AUTHORIZE) return;
         waitingResolution = false;
-        if (resultCode != RESULT_OK || data == null) { authFailed(getString(R.string.drive_auth_cancelled)); return; }
-        try { acceptAuthorization(Identity.getAuthorizationClient(this).getAuthorizationResultFromIntent(data)); }
-        catch (ApiException error) { authFailed(getString(R.string.drive_auth_failed)); }
+        AuthorizationCallback.Result<AuthorizationResult> decoded = AuthorizationCallback.decode(resultCode,data,payload -> {
+            try { return Identity.getAuthorizationClient(this).getAuthorizationResultFromIntent(payload); }
+            catch (ApiException error) { throw new AuthorizationCallback.StatusFailure(error.getStatusCode()); }
+        });
+        if (decoded.status != null) authStatusFailed(decoded.status);
+        else if (decoded.value != null) acceptAuthorization(decoded.value);
+        else authFailed(getString(R.string.drive_auth_no_result,decoded.activityResult));
     }
 
     private void acceptAuthorization(AuthorizationResult result) {
@@ -232,6 +236,18 @@ public final class DriveActivity extends AppCompatActivity {
     private void authFailed(String reason) {
         authorizing = false; waitingResolution = false;
         message.setText(reason); updateControls();
+    }
+
+    private void authStatusFailed(int code) {
+        int reason;
+        switch (code) {
+            case 10: reason = R.string.drive_auth_config; break;
+            case 7: case 15: reason = R.string.drive_auth_network; break;
+            case 16: case 12501: reason = R.string.drive_auth_interrupted; break;
+            default: reason = R.string.drive_auth_failed;
+        }
+        // Only a numeric SDK status is exposed. Never render provider messages or tokens.
+        authFailed(getString(reason) + "\n" + getString(R.string.drive_auth_status,code));
     }
 
     private void disconnect() {

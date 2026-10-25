@@ -13,7 +13,10 @@
     <string name="drive_authorizing">正在请求 Google 授权…</string>
     <string name="drive_auth_failed">无法完成 Google 授权。请检查网络、Google Play 服务以及 Google Cloud 配置后重试。</string>
     <string name="drive_auth_config">Google 授权配置不匹配。请按照仓库文档核对 Android 客户端包名、签名 SHA-1、测试用户及 Drive API。</string>
-    <string name="drive_auth_cancelled">已取消授权；未连接 Google Drive。</string>
+    <string name="drive_auth_interrupted">Google 授权未完成。如果你没有主动取消，请检查 Android OAuth 客户端的包名、APK 签名 SHA-1 和测试用户。</string>
+    <string name="drive_auth_no_result">Google 授权页面已返回，但没有提供可解析的结果（返回码 %1$d）。这可能是取消，也可能是配置或 Google Play 服务错误；不能据此判断 Drive API 是否启用。若你刚选择账号就返回，请先核对 Android OAuth 包名、当前 APK 的签名 SHA-1 和测试用户。</string>
+    <string name="drive_auth_network">Google 授权连接失败或超时。请确认系统网络能够连接 Google，并检查 Google Play 服务后重试。</string>
+    <string name="drive_auth_status">Google 授权状态码：%1$d</string>
     <string name="drive_scope_missing">未获得云盘只读权限。可重新连接并选择允许，或继续使用公开文件下载。</string>
     <string name="drive_disconnected">已断开本机连接并停止私人文件传输。Google 端的授权可通过菜单撤销。</string>
     <string name="drive_loading">正在加载文件…</string>
