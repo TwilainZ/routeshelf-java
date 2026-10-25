@@ -30,6 +30,8 @@
 
 Android Studio、本地云环境和不同 GitHub Actions 运行生成的临时 debug keystore **可能不同**，因此 SHA-1 可能不同。本次普通 CI 不上传或固定签名私钥；不能假定给某个本地 APK 注册的 OAuth 客户端也适用于任意 CI APK。持续测试应使用维护者安全管理的稳定签名，再为其注册 Android 客户端。不要提交 keystore、签名口令或其他凭据。正式发布还需注册实际发行签名；使用 Play App Signing 时以 Play Console 的 app signing certificate 为准。
 
+CI 的 `GDirectLite-debug-APK` 工件同时包含 `signing-certificate.txt` 和 `SHA256SUMS`，可查看该工件中 APK 的实际 SHA-1 及 SHA-256，不包含签名私钥。
+
 ## 验证清单
 
 - 首次授权成功、取消授权、未授予所需范围；没有密码输入框或自制网页登录页。

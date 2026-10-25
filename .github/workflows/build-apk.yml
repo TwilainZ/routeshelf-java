@@ -26,12 +26,17 @@ jobs:
         run: bash tests/run-java-checks.sh
       - name: Compile and lint the tracked source
         run: ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --no-daemon --max-workers=2
-      - name: APK checksum
-        run: sha256sum app/build/outputs/apk/debug/app-debug.apk
+      - name: APK checksum and signing identity
+        run: |
+          sha256sum app/build/outputs/apk/debug/app-debug.apk > app/build/outputs/apk/debug/SHA256SUMS
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs app/build/outputs/apk/debug/app-debug.apk > app/build/outputs/apk/debug/signing-certificate.txt
       - uses: actions/upload-artifact@v5
         with:
           name: GDirectLite-debug-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/debug/SHA256SUMS
+            app/build/outputs/apk/debug/signing-certificate.txt
           if-no-files-found: error
       - uses: actions/upload-artifact@v5
         if: always()
