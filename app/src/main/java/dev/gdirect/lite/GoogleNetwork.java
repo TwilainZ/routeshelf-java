@@ -103,6 +103,7 @@ public final class GoogleNetwork extends Application {
             }
         }
         List<Future<List<String>>> lookups = new ArrayList<>();
+        List<String> freshDns = new ArrayList<>();
         for (String name : new String[]{host,"www.googleapis.com","drive.usercontent.google.com"}) {
             try {
                 lookups.add(dns.submit(() -> {
@@ -120,7 +121,7 @@ public final class GoogleNetwork extends Application {
                 for (java.util.Iterator<Future<List<String>>> iterator = lookups.iterator(); iterator.hasNext();) {
                     Future<List<String>> lookup = iterator.next();
                     if (!lookup.isDone()) continue;
-                    try { result.addAll(lookup.get()); }
+                    try { freshDns.addAll(lookup.get()); }
                     catch (java.util.concurrent.ExecutionException ignored) { }
                     iterator.remove();
                 }
@@ -129,7 +130,7 @@ public final class GoogleNetwork extends Application {
         } catch (InterruptedException error) {
             Thread.currentThread().interrupt(); throw new java.io.InterruptedIOException("直连检测已取消");
         } finally { for (Future<List<String>> lookup : lookups) lookup.cancel(true); }
-        return new ArrayList<>(result);
+        return DirectRoutes.candidates(freshDns,new ArrayList<>(result));
     }
 
     private void probe(DirectRoutes.Route route) throws IOException {

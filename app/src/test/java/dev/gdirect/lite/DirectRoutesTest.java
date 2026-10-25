@@ -97,4 +97,13 @@ public final class DirectRoutesTest {
         worker.start(); assertTrue(started.await(1,TimeUnit.SECONDS)); routes.reset(); release.countDown(); worker.join(1000);
         assertFalse(worker.isAlive()); assertNotNull(result.get()); assertTrue(memory.values.isEmpty());
     }
+
+    @Test public void staleHistoryCannotExcludeFreshDnsAndDnsCannotExcludeBootstrapHints() {
+        java.util.List<String> history = new java.util.ArrayList<>(), fresh = new java.util.ArrayList<>();
+        for (int i = 1; i <= 20; i++) { history.add("8.8.8." + i); fresh.add("8.8.4." + i); }
+        java.util.List<String> merged = DirectRoutes.candidates(fresh,history);
+        assertEquals(16,merged.size()); assertTrue(merged.contains(fresh.get(0))); assertTrue(merged.contains(history.get(0)));
+        assertEquals(history.subList(0,16),DirectRoutes.candidates(Collections.singletonList("198.18.0.1"),history));
+        assertTrue(DirectRoutes.publicIpv4("192.2.1.1")); assertFalse(DirectRoutes.publicIpv4("192.0.2.1"));
+    }
 }

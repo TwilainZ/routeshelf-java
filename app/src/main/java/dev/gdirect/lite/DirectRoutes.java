@@ -67,9 +67,22 @@ final class DirectRoutes {
         return n[0] != 0 && n[0] != 10 && n[0] != 127 && n[0] < 224
             && !(n[0] == 100 && n[1] >= 64 && n[1] <= 127)
             && !(n[0] == 169 && n[1] == 254) && !(n[0] == 172 && n[1] >= 16 && n[1] <= 31)
-            && !(n[0] == 192 && (n[1] == 168 || n[1] == 0 || (n[1] == 2)))
+            && !(n[0] == 192 && (n[1] == 168 || (n[1] == 0 && (n[2] == 0 || n[2] == 2))))
             && !(n[0] == 198 && (n[1] == 18 || n[1] == 19 || (n[1] == 51 && n[2] == 100)))
             && !(n[0] == 203 && n[1] == 0 && n[2] == 113);
+    }
+
+    static List<String> candidates(List<String> freshDns, List<String> history) {
+        LinkedHashSet<String> ordered = new LinkedHashSet<>();
+        for (String value : freshDns) {
+            if (publicIpv4(value)) ordered.add(value);
+            if (ordered.size() >= 8) break;
+        }
+        for (String value : history) {
+            if (publicIpv4(value)) ordered.add(value);
+            if (ordered.size() >= 16) break;
+        }
+        return new ArrayList<>(ordered);
     }
 
     Route select(String host, Set<String> failed) throws IOException {
