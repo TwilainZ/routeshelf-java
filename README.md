@@ -1,8 +1,8 @@
 # GDirect Lite — Android prototype
 
-> **Unofficial experimental prototype.** Independent Android implementation inspired by [mizorewww/gdirect](https://github.com/mizorewww/gdirect). Not endorsed by its author or Google.
+> **独立开发的 Android 下载工具实验项目。** 非 Google 官方应用。
 >
-> **No APK has been built or device-tested in this workspace** because the Android SDK/Gradle distribution are unavailable here. The project includes an automated build workflow that can compile `app-debug.apk` on GitHub Actions.
+> **当前状态：** v0.1.0 已通过 GitHub Actions 构建 APK，并已完成公开 Google Drive 文件下载的手机实测；其他网络与设备场景尚未充分测试。
 
 ## 功能 / Features
 
@@ -18,8 +18,8 @@
 
 ### 方式 A：GitHub Actions（最适合没有 Android Studio 的情况）
 
-1. 在自己的 GitHub 仓库中上传本目录的**文件和子目录**，保留 `.github/workflows/build-apk.yml`。
-2. 打开仓库的 **Actions → Build Android APK → Run workflow**（或者推送代码自动触发）。
+1. 此仓库根目录保存 `GDirectLiteAndroid-source.zip`，工作流 `.github/workflows/import-and-build.yml` 会自动解压并编译。
+2. 上传 ZIP 或修改工作流后会自动运行，也可以从仓库 **Actions** 页面查看运行记录。
 3. 等待 workflow 成功，打开对应的工作流运行记录，在 **Artifacts** 下载 `GDirectLite-debug-APK`。
 4. 解压得到 `app-debug.apk`，传给安卓手机并安装。
 
@@ -48,9 +48,9 @@ APK 默认在 `app/build/outputs/apk/debug/app-debug.apk`。首次构建需要�
 - **仅公开、单个普通文件**：不支持 Google Workspace 文档导出、文件夹、私人文件登录、云盘上传或挂载。
 - Google 下载页面可能有复杂的确认按钮、动态令牌、病毒扫描确认或流量配额限制；已实现简单 HTML 表单确认，但不保证所有 Google Drive 页面都能解析。
 - 分块续传是按**完整的 4 MiB 分块**保存进度，取消时进行中的分块会重新下载；无 HTTP Range 的服务器走单连接，不能续传。
-- 使用标准 SNI 和严格的 HTTPS 主机名验证；**尚未实现原项目的自定义 SNI / 无 SNI 模式和修改过的 aria2 引擎**。指定 IP 只是正常 HTTPS 连接的 DNS/IP 替换，不能保证绕过网络限制，更不应视为 VPN。
-- 多连接实现是 Android/Java 的 HTTP Range 下载器，**不是原版 gdirect Rust + patched aria2 的 Android 移植**。某些 Google CDN 节点可能不支持强制 IP。
-- 尚未经过完整的编译、模拟器与真机测试。性能、电池、设备兼容性、安全性均有待验证。
+- 使用标准 SNI 和严格的 HTTPS 主机名验证；**当前不支持自定义 SNI / 无 SNI 模式，也没有集成 aria2 引擎**。指定 IP 只是正常 HTTPS 连接的 DNS/IP 替换，不能保证绕过网络限制，更不应视为 VPN。
+- 多连接实现是独立的 Android/Java HTTP Range 下载器；某些 Google CDN 节点可能不支持强制 IP。
+- v0.1.0 已通过云端编译和一次公开文件下载的真机测试；其他机型、性能、电池与安全性仍有待验证。
 - 前台数据传输受 Android 系统的后台执行/时长限制；建议在 App 前台使用。
 - 进度通知权限在 Android 13+ 下载时申请；即使拒绝也可使用前台服务，但通知可见性受系统规则限制。
 - 默认在本机 App 私有存储保留下载中临时文件和分块进度；下载完成后复制到系统 Downloads，可能暂时需要约两份文件大小的存储空间。
@@ -61,20 +61,8 @@ APK 默认在 `app/build/outputs/apk/debug/app-debug.apk`。首次构建需要�
 - `app/src/main/java/dev/gdirect/lite/DirectNet.java`: Google Drive 链接解析、HTTPS、IP 测试、跳转处理、Google HTML 确认。
 - `app/src/main/java/dev/gdirect/lite/DownloadService.java`: 前台下载、多连接、断点续传、MediaStore 下载保存。
 - `app/src/main/java/dev/gdirect/lite/MainActivity.java`: 手机界面、分享入口、任务控制。
-- `.github/workflows/build-apk.yml`: 自动构建可安装的 Android debug APK。
+- `.github/workflows/import-and-build.yml`: 从仓库内源码 ZIP 构建 Android debug APK。
 
 ## 许可证
 
-这个独立 Android 原型以 **GPL-2.0-or-later** 开源，以方便之后与原版 gdirect 协作或合并。参见 `LICENSE`。原作者及 Google 与此非官方原型没有关联。
-
-## 自动发布到独立 GitHub 私有仓库（Mac / Linux）
-
-如果当前聊天无法直接创建 GitHub 仓库，可以在电脑上安装 `git` 和 GitHub CLI (`gh`)，运行一次 `gh auth login`，然后在解压后的 `GDirectLiteAndroid` 目录执行：
-
-```sh
-bash publish-and-build.sh
-```
-
-脚本只会创建一个**新的私有仓库** `gdirect-lite-android`，**不会修改其他已有仓库**；如同名仓库已存在，命令会失败，不会覆盖它。`push` 会触发 `.github/workflows/build-apk.yml`；生成的 APK 在 Actions 的 Artifacts 中下载。
-
-这并不意味着已在本地或云端编译成功。下载后的 `app-debug.apk` 是仅用于个人测试的 debug 包，正式分发需额外签名、安全审计和设备测试。
+本项目的 Android 源码使用 **GPL-2.0-or-later** 许可证，参见源码 ZIP 内的 `LICENSE`。
