@@ -1,0 +1,62 @@
+name: Import ZIP and build Android APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'GDirectLiteAndroid-source.zip'
+      - '.github/workflows/import-and-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Import Android source ZIP
+        id: source
+        shell: bash
+        run: |
+          if [ ! -f GDirectLiteAndroid-source.zip ]; then
+            echo 'ready=false' >> "$GITHUB_OUTPUT"
+            echo 'Upload GDirectLiteAndroid-source.zip to the repository root to build.'
+            exit 0
+          fi
+          mkdir -p /tmp/gdirect-import
+          unzip -q GDirectLiteAndroid-source.zip -d /tmp/gdirect-import
+          test -f /tmp/gdirect-import/GDirectLiteAndroid/app/build.gradle
+          cp -a /tmp/gdirect-import/GDirectLiteAndroid/. .
+          echo 'ready=true' >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-java@v4
+        if: steps.source.outputs.ready == 'true'
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Run Java checks
+        if: steps.source.outputs.ready == 'true'
+        run: bash tests/run-java-checks.sh
+      - uses: android-actions/setup-android@v3
+        if: steps.source.outputs.ready == 'true'
+      - name: Install Android SDK
+        if: steps.source.outputs.ready == 'true'
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.source.outputs.ready == 'true'
+        with:
+          gradle-version: '8.9'
+      - name: Compile APK
+        if: steps.source.outputs.ready == 'true'
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
+      - name: APK checksum
+        if: steps.source.outputs.ready == 'true'
+        run: sha256sum app/build/outputs/apk/debug/app-debug.apk
+      - uses: actions/upload-artifact@v4
+        if: steps.source.outputs.ready == 'true'
+        with:
+          name: GDirectLite-debug-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
