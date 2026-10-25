@@ -30,6 +30,8 @@ jobs:
           unzip -q GDirectLiteAndroid-source.zip -d /tmp/gdirect-import
           test -f /tmp/gdirect-import/GDirectLiteAndroid/app/build.gradle
           cp -a /tmp/gdirect-import/GDirectLiteAndroid/. .
+          # Compatibility correction for Java API typo in the first archived source release.
+          sed -i 's/\.setTextAllCaps(false)/.setAllCaps(false)/g' app/src/main/java/dev/gdirect/lite/MainActivity.java
           echo 'ready=true' >> "$GITHUB_OUTPUT"
       - uses: actions/setup-java@v4
         if: steps.source.outputs.ready == 'true'
