@@ -38,7 +38,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.CompletionService;
 import java.util.concurrent.ExecutorCompletionService;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import javax.net.ssl.HttpsURLConnection;
@@ -316,9 +315,8 @@ public final class DownloadService extends Service {
             pool.shutdownNow();
             throw new IOException("分块下载中断：" + explain(ex.getCause() == null ? ex : ex.getCause()), ex);
         } finally {
-            pool.shutdownNow();
             // Never let an old worker write into a partial file reused by a new transfer.
-            while (!pool.awaitTermination(1, TimeUnit.SECONDS)) { /* reads have a finite timeout */ }
+            WorkerShutdown.join(pool);
         }
         if (done.cardinality() != count) throw new IOException("分块未全部完成");
     }
