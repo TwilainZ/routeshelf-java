@@ -14,3 +14,5 @@ dependencyResolutionManagement {
 }
 rootProject.name = 'GDirectLite'
 include ':app'
+
+include ':inspector'

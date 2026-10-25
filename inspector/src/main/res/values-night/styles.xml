@@ -1,0 +1,8 @@
+<resources>
+    <style name="InspectorTheme" parent="Theme.Material3.DayNight">
+        <item name="colorPrimary">#A9BDFF</item>
+        <item name="colorOnPrimary">#10285D</item>
+        <item name="colorSurface">#141B29</item>
+        <item name="colorOnSurface">#E1E7F3</item>
+    </style>
+</resources>

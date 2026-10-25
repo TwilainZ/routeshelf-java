@@ -1,5 +1,6 @@
 package dev.gdirect.lite;
 
+import android.Manifest;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -14,6 +15,7 @@ import android.os.IBinder;
 import android.os.SystemClock;
 import android.provider.MediaStore;
 import android.content.pm.ServiceInfo;
+import android.content.pm.PackageManager;
 import android.webkit.MimeTypeMap;
 
 import java.io.File;
@@ -150,7 +152,10 @@ public final class DownloadService extends Service {
         long now = SystemClock.elapsedRealtime();
         if (now - lastNotification > 1200) {
             lastNotification = now;
-            getSystemService(NotificationManager.class).notify(NOTIFY_ID, notification());
+            if (Build.VERSION.SDK_INT < 33
+                || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+                getSystemService(NotificationManager.class).notify(NOTIFY_ID, notification());
+            }
         }
     }
     private Notification notification() {

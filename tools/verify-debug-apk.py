@@ -17,6 +17,7 @@ parser.add_argument('--revision', required=True)
 parser.add_argument('--run', default='local')
 parser.add_argument('--signing-mode', choices=('pinned-test', 'temporary-debug'), default='temporary-debug')
 parser.add_argument('--output', type=Path, required=True)
+parser.add_argument('--probe', action='store_true', help='Verify the separate offline installed-package inspector')
 args = parser.parse_args()
 if not re.fullmatch(r'[A-Za-z0-9._-]{1,64}', args.revision) or not re.fullmatch(r'[A-Za-z0-9._-]{1,64}', args.run):
     raise SystemExit('Invalid build identity')
@@ -26,17 +27,32 @@ def command(*parts):
 
 badging = command(args.aapt2, 'dump', 'badging', str(args.apk))
 package = re.search(r"package: name='([^']+)' versionCode='([^']+)' versionName='([^']+)'", badging)
-if not package or package.groups() != ('dev.gdirect.lite', '3', '0.2.1-diagnostic'):
+expected_package = 'dev.gdirect.lite.probe' if args.probe else 'dev.gdirect.lite'
+expected_version = '0.2.1-diagnostic-probe' if args.probe else '0.2.1-diagnostic'
+if not package or package.groups() != (expected_package, '3', expected_version):
     raise SystemExit('APK package or diagnostic version does not match the expected build')
+if args.probe and re.search(r"uses-permission(?:-sdk-\d+)?: name='android.permission.INTERNET'", badging):
+    raise SystemExit('Offline package inspector must not request INTERNET permission')
+if args.probe and 'probe_title' not in command(args.aapt2, 'dump', 'resources', str(args.apk)):
+    raise SystemExit('Offline package inspector resources are missing')
 resources = command(args.aapt2, 'dump', 'resources', str(args.apk))
 if '已取消授权；未连接 Google Drive' in resources:
     raise SystemExit('Old cancellation-only error message is still packaged in the APK')
-for resource in ('build_identity', 'diagnostics_title', 'drive_auth_no_result', 'drive_auth_status'):
+required_resources = ('probe_title', 'probe_explanation') if args.probe else ('build_identity', 'diagnostics_title', 'drive_auth_no_result', 'drive_auth_status')
+for resource in required_resources:
     if resource not in resources:
         raise SystemExit('Missing diagnostic resource: ' + resource)
 with zipfile.ZipFile(args.apk) as apk:
     dex = [apk.read(name) for name in apk.namelist() if re.fullmatch(r'classes\d*\.dex', name)]
-    for value in ('Ldev/gdirect/lite/AuthorizationCallback;', 'Ldev/gdirect/lite/AppDiagnostics;', args.revision):
+    required_code = [args.revision]
+    if args.probe:
+        required_code.append('Ldev/gdirect/lite/probe/PackageProbeActivity;')
+        for forbidden in ('Ldev/gdirect/lite/DriveActivity;', 'Ldev/gdirect/lite/DownloadService;', 'Lcom/google/android/gms/auth/api/identity/AuthorizationClient;'):
+            if any(forbidden.encode('ascii') in part for part in dex):
+                raise SystemExit('Offline inspector contains login/download code: ' + forbidden)
+    else:
+        required_code.extend(('Ldev/gdirect/lite/AuthorizationCallback;', 'Ldev/gdirect/lite/AppDiagnostics;'))
+    for value in required_code:
         if not any(value.encode('ascii') in part for part in dex):
             raise SystemExit('Expected diagnostic code/revision not present in APK: ' + value)
 certificates = command(args.apksigner, 'verify', '--print-certs', str(args.apk))
@@ -44,8 +60,12 @@ sha1 = re.findall(r'Signer #\d+ certificate SHA-1 digest: ([a-fA-F0-9]{40})', ce
 if not sha1:
     raise SystemExit('APK certificate fingerprint unavailable')
 sha1 = [':'.join(value[i:i+2] for i in range(0,len(value),2)).upper() for value in sha1]
+prefix = 'GDirectLite-inspector' if args.probe else 'GDirectLite'
+filename = f'{prefix}-{package[3]}-{args.revision}-{args.run}.apk'
+expected_files = {filename, 'APK-IDENTITY.json', 'signing-certificate.txt', 'SHA256SUMS'}
+if args.output.exists() and any(path.is_dir() or path.name not in expected_files for path in args.output.iterdir()):
+    raise SystemExit('Output directory contains a different/stale build; select an empty output directory')
 args.output.mkdir(parents=True, exist_ok=True)
-filename = f'GDirectLite-{package[3]}-{args.revision}-{args.run}.apk'
 destination = args.output / filename
 shutil.copyfile(args.apk, destination)
 sha256 = hashlib.sha256(destination.read_bytes()).hexdigest()
@@ -53,6 +73,8 @@ identity = dict(package=package[1], versionCode=int(package[2]), versionName=pac
                 revision=args.revision, run=args.run, filename=filename,
                 signingMode=args.signing_mode, certificateSha1=sha1, apkSha256=sha256,
                 oldCancellationMessagePresent=False)
+if args.probe:
+    identity.update(offlinePackageInspector=True, internetPermission=False, targetPackage='dev.gdirect.lite')
 (args.output / 'APK-IDENTITY.json').write_text(json.dumps(identity, indent=2) + '\n')
 (args.output / 'signing-certificate.txt').write_text(certificates)
 (args.output / 'SHA256SUMS').write_text(f'{sha256}  {filename}\n')

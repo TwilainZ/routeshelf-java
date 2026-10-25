@@ -39,7 +39,7 @@ jobs:
       - name: Test networking and security policies
         run: bash tests/run-java-checks.sh
       - name: Compile and lint the tracked source
-        run: ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --no-daemon --max-workers=2
+        run: ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug :inspector:assembleDebug :inspector:lintDebug --no-daemon --max-workers=2
       - name: Verify packaged version, code, resources, and signer
         run: |
           python3 tools/verify-debug-apk.py \
@@ -49,10 +49,22 @@ jobs:
             --revision "$GITHUB_SHA" --run "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
             --signing-mode "$GDIRECT_SIGNING_MODE" \
             --output app/build/outputs/verified-apk
+          python3 tools/verify-debug-apk.py \
+            --aapt2 "$ANDROID_HOME/build-tools/35.0.0/aapt2" \
+            --apksigner "$ANDROID_HOME/build-tools/35.0.0/apksigner" \
+            --apk inspector/build/outputs/apk/debug/inspector-debug.apk --probe \
+            --revision "$GITHUB_SHA" --run "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            --signing-mode temporary-debug \
+            --output app/build/outputs/verified-inspector
       - uses: actions/upload-artifact@v5
         with:
           name: GDirectLite-0.2.1-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
           path: app/build/outputs/verified-apk/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v5
+        with:
+          name: GDirectLite-inspector-${{ github.run_id }}-${{ github.run_attempt }}
+          path: app/build/outputs/verified-inspector/
           if-no-files-found: error
       - uses: actions/upload-artifact@v5
         if: always()

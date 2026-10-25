@@ -5,6 +5,7 @@ Run after resolving dependencies: python3 tools/refresh-notices.py
 Requires the project's JDK/SDK/Gradle environment. No credentials are read.
 """
 import io
+import argparse
 import os
 from pathlib import Path
 import re
@@ -13,8 +14,11 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 root = Path(__file__).resolve().parents[1]
+parser = argparse.ArgumentParser()
+parser.add_argument('--module',choices=('app','inspector'),default='app')
+args = parser.parse_args()
 report = subprocess.run(
-    [str(root / "gradlew"), ":app:dependencies", "--configuration", "debugRuntimeClasspath",
+    [str(root / "gradlew"), f":{args.module}:dependencies", "--configuration", "debugRuntimeClasspath",
      "--no-daemon", "--max-workers=2", "--console=plain"],
     cwd=root, check=True, text=True, stdout=subprocess.PIPE,
 ).stdout
@@ -80,6 +84,9 @@ configured JDK/SDK shell; review new licenses before distributing.
 | Resolved module | License |
 | --- | --- |
 """
+if args.module == 'inspector':
+    header = header.replace('Google authorization requires Google Play services on the device.',
+                            'This offline inspector does not include the Google authorization SDK or request Google authorization.')
 footer = """
 Gradle 8.9 and its generated Wrapper are Apache-2.0. Android SDK/build tools are
 development prerequisites governed by their SDK terms, not application-owned code.
@@ -94,9 +101,17 @@ preserved in `app/src/main/assets/third-party-notices.txt`, accessible from the
 Drive screen's “许可证与第三方声明” menu. The Google SDK terms linked above apply
 to the Google components in the inventory.
 """
+if args.module == 'inspector':
+    footer = footer.replace('Test-only dependencies (not shipped in the APK):',
+                            "The main application's test-only dependencies (not shipped in this APK):")
+    footer = footer.split('Bundled component license/copyright/notice texts')[0] + """Bundled component license/copyright/notice texts and the Apache-2.0 license are
+preserved in `inspector/src/main/assets/third-party-notices.txt` inside the APK.
+This module has no Google authorization or download implementation.
+"""
 inventory = header + "\n".join(rows) + "\n" + footer
-(root / "THIRD_PARTY_NOTICES.md").write_text(inventory)
-asset = root / "app/src/main/assets/third-party-notices.txt"
+notice_path = root / ('THIRD_PARTY_NOTICES.md' if args.module == 'app' else 'inspector/THIRD_PARTY_NOTICES.md')
+notice_path.write_text(inventory)
+asset = root / args.module / "src/main/assets/third-party-notices.txt"
 asset.parent.mkdir(parents=True, exist_ok=True)
 asset.write_text(inventory + "\n\n" + (root / "NOTICE").read_text()
                  + "\n\n" + (root / "LICENSE").read_text() + "\n\n" + "\n".join(bundled))
