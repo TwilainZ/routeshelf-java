@@ -117,8 +117,13 @@ public final class MainActivity extends Activity {
         space(root, 10);
         root.addView(text("Google Drive 直连下载", 27, INK, true));
         space(root, 7);
-        root.addView(text("Android Lite  ·  无需 Root  ·  仅公开文件", 13, MUTED, false));
+        root.addView(text("公开链接下载 · Google Drive 只读浏览", 13, MUTED, false));
         space(root, 22);
+
+        Button myDrive = button(getString(R.string.drive_title), true);
+        myDrive.setOnClickListener(v -> startActivity(new Intent(this, DriveActivity.class)));
+        root.addView(myDrive, new LinearLayout.LayoutParams(-1,-2));
+        space(root, 16);
 
         LinearLayout download = card(root);
         heading(download, "文件链接", "粘贴公开分享的 Google Drive 文件链接，不需要登录账号。");
@@ -171,7 +176,7 @@ public final class MainActivity extends Activity {
         network.addView(threads);
 
         LinearLayout actions = card(root);
-        heading(actions, "下载进度", "大文件采用 HTTP Range 分块下载；取消后重试可继续已完成的分块。");
+        heading(actions, "下载进度", "服务器提供稳定版本标识时支持分块续传；否则安全地重新下载。");
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progress.setMax(1000);
         progress.setProgressTintList(android.content.res.ColorStateList.valueOf(BLUE));
@@ -203,11 +208,10 @@ public final class MainActivity extends Activity {
         });
         open.setOnClickListener(v -> openFile());
         space(root, 1);
-        root.addView(text("实验性开源原型 · 保持 HTTPS 证书校验 · 不索取 Google 登录权限", 12, MUTED, false));
+        root.addView(text("实验性开源原型 · 严格 HTTPS 校验 · 公开文件无需登录", 12, MUTED, false));
         linkInput.setText(getPreferences(MODE_PRIVATE).getString("link", ""));
         ipInput.setText(getPreferences(MODE_PRIVATE).getString("ip", ""));
         takeSharedIntent(getIntent());
-        handler.post(ticker);
     }
 
     @Override protected void onNewIntent(Intent intent) {
@@ -234,7 +238,7 @@ public final class MainActivity extends Activity {
                 runOnUiThread(() -> {
                     scan.setEnabled(true);
                     if (results.isEmpty()) {
-                        status.setText("没有找到直连 IP，可清空 IP 后使用系统网络。登录/挂载功能尚不支持。");
+                        status.setText("没有找到直连 IP，可清空 IP 后使用系统网络。私人文件始终使用系统网络。");
                     } else {
                         ipInput.setText(results.get(0).ip);
                         StringBuilder s = new StringBuilder("已选延迟最低的可用 IP：\n");
@@ -303,4 +307,6 @@ public final class MainActivity extends Activity {
         handler.removeCallbacks(ticker);
         super.onDestroy();
     }
+    @Override protected void onStart() { super.onStart(); handler.post(ticker); }
+    @Override protected void onStop() { handler.removeCallbacks(ticker); super.onStop(); }
 }

@@ -4,8 +4,10 @@ import java.lang.reflect.Method;
 import java.net.URL;
 
 public final class DirectNetChecks {
+    private static int checks;
     private static void expect(boolean ok, String why) {
         if (!ok) throw new AssertionError(why);
+        checks++;
     }
     public static void main(String[] args) throws Exception {
         String id = "1abcdeFGHIJKLMNOPQRstu0123";
@@ -32,6 +34,6 @@ public final class DirectNetChecks {
         URL confirm = (URL)confirmation.invoke(null, new URL("https://drive.google.com"), page);
         expect(confirm.toString().contains("id=" + id) && confirm.toString().contains("confirm=t"),
             "confirmation form parsing");
-        System.out.println("7 local parsing/security checks passed (no network required).");
+        System.out.println(checks + " local parsing/security checks passed (no network required).");
     }
 }

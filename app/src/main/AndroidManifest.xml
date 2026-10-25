@@ -8,6 +8,8 @@
     <application
         android:label="GDirect Lite"
         android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:usesCleartextTraffic="false"
         android:supportsRtl="true">
@@ -26,5 +28,7 @@
             android:name=".DownloadService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+        <activity android:name=".DriveActivity" android:exported="false" android:theme="@style/DriveTheme"
+            android:enableOnBackInvokedCallback="true" />
     </application>
 </manifest>

@@ -31,8 +31,10 @@ final class DirectNet {
         final long size;
         final boolean ranges;
         final String filename;
-        Probe(URL url, long size, boolean ranges, String filename) {
+        final String etag;
+        Probe(URL url, long size, boolean ranges, String filename, String etag) {
             this.finalUrl = url; this.size = size; this.ranges = ranges; this.filename = filename;
+            this.etag = TransferRules.strongEtag(etag);
         }
     }
 
@@ -67,7 +69,7 @@ final class DirectNet {
         if (raw.isEmpty()) throw new IOException("请先粘贴公开的 Google Drive 文件链接");
         URL url = new URL(raw);
         if (!url.getProtocol().equalsIgnoreCase("https") || !googleHost(url.getHost())
-            || (url.getPort() != -1 && url.getPort() != 443)) {
+            || (url.getPort() != -1 && url.getPort() != 443) || url.getUserInfo() != null) {
             throw new IOException("仅接受 HTTPS Google Drive 文件链接");
         }
         String path = url.getPath();
@@ -86,9 +88,13 @@ final class DirectNet {
     }
 
     static HttpsURLConnection open(URL url, String ip, String range) throws IOException {
+        return open(url, ip, range, null);
+    }
+
+    static HttpsURLConnection open(URL url, String ip, String range, String validator) throws IOException {
         for (int redirects = 0; redirects < 8; redirects++) {
             if (!"https".equalsIgnoreCase(url.getProtocol()) || !googleHost(url.getHost())
-                    || (url.getPort() != -1 && url.getPort() != 443)) {
+                    || (url.getPort() != -1 && url.getPort() != 443) || url.getUserInfo() != null) {
                 throw new IOException("服务器跳转到了不允许的地址，已停止下载");
             }
             HttpsURLConnection connection = (HttpsURLConnection) (ip == null
@@ -100,11 +106,14 @@ final class DirectNet {
             connection.setRequestProperty("Accept-Encoding", "identity");
             connection.setRequestProperty("Connection", "close");
             if (range != null) connection.setRequestProperty("Range", range);
+            if (validator != null) connection.setRequestProperty("If-Range", validator);
             if (ip != null) {
                 connection.setSSLSocketFactory(new DirectSocketFactory(
                     (SSLSocketFactory) SSLSocketFactory.getDefault(), ip));
             }
-            int code = connection.getResponseCode();
+            int code;
+            try { code = connection.getResponseCode(); }
+            catch (IOException error) { connection.disconnect(); throw error; }
             if (code == 301 || code == 302 || code == 303 || code == 307 || code == 308) {
                 String location = connection.getHeaderField("Location");
                 connection.disconnect();
@@ -142,14 +151,10 @@ final class DirectNet {
                 long size = connection.getContentLengthLong();
                 boolean range = code == 206;
                 if (range) {
-                    String r = connection.getHeaderField("Content-Range");
-                    Matcher match = Pattern.compile("bytes\\s+0-0/(\\d+)", Pattern.CASE_INSENSITIVE)
-                        .matcher(r == null ? "" : r);
-                    if (!match.find()) throw new IOException("服务器没有返回有效的文件大小");
-                    size = Long.parseLong(match.group(1));
+                    size = TransferRules.rangeTotal(connection.getHeaderField("Content-Range"), 0, 0);
                 }
                 String name = getFilename(disposition, start);
-                return new Probe(actual, size, range && size > 0, name);
+                return new Probe(actual, size, range && size > 0, name, connection.getHeaderField("ETag"));
             } finally { connection.disconnect(); }
         }
         throw new IOException("Google 下载确认页面重复出现");
@@ -214,9 +219,7 @@ final class DirectNet {
             Matcher m = Pattern.compile("(?:^|&)id=([a-zA-Z0-9_-]+)").matcher(url.getQuery() == null ? "" : url.getQuery());
             name = m.find() ? "gdrive-" + m.group(1) + ".bin" : "gdrive-download.bin";
         }
-        name = name.replaceAll("[/\\\\\\p{Cntrl}]", "_").trim();
-        if (name.length() > 150) name = name.substring(0, 150);
-        return name.isEmpty() || name.equals(".") || name.equals("..") ? "gdrive-download.bin" : name;
+        return TransferRules.safeFilename(name);
     }
 
     static List<ScanResult> scan() throws IOException {

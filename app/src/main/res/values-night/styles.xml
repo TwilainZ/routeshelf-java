@@ -1,0 +1,15 @@
+<resources>
+    <style name="DriveTheme" parent="Theme.Material3.DayNight">
+        <item name="colorPrimary">#A9BDFF</item>
+        <item name="colorOnPrimary">#10285D</item>
+        <item name="colorPrimaryContainer">#294175</item>
+        <item name="colorOnPrimaryContainer">#DDE5FF</item>
+        <item name="colorSecondary">#BBC7E0</item>
+        <item name="colorOnSecondary">#253149</item>
+        <item name="colorSurface">#141B29</item>
+        <item name="colorOnSurface">#E1E7F3</item>
+        <item name="colorOnSurfaceVariant">#BBC5D8</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>

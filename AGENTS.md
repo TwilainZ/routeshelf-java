@@ -10,14 +10,16 @@ Ordinary standard Android/Google libraries and properly licensed dependencies ar
 
 ## Verified baseline
 
-- The original independently authored Java Android MVP resides in `GDirectLiteAndroid-source.zip`. It supports public Google Drive file links, an HTTPS/IP test, 1/4/8-range downloads, resume, progress, and system Downloads integration.
-- `.github/workflows/import-and-build.yml` extracts that ZIP, invokes Android SDK/Gradle, builds a debug APK, and uploads it as a workflow artifact.
+- The original independently authored Java Android MVP is preserved unchanged in `archive/GDirectLiteAndroid-v0.1.0-source.zip`. Normal development uses tracked source in `app/`, standalone checks in `tests/`, and the Gradle Wrapper. Do not overwrite tracked files from the archive.
+- `.github/workflows/build-apk.yml` builds tracked source, runs parsing checks, JVM tests and Android Lint, and uploads the debug APK.
 - Verified successful build: https://github.com/qingzhuernest/gdirect-lite-android/actions/runs/40181176409
 - Owner reported a public file download succeeded on their Android phone; broader functional/security tests are not yet complete.
-- The build workflow hotfixes `Button.setTextAllCaps(false)` to `Button.setAllCaps(false)` after extracting the ZIP. Move that correction into tracked source when normalizing project structure.
+- The archived `Button.setTextAllCaps(false)` typo is corrected to `Button.setAllCaps(false)` in tracked source. No build-time source patch is required.
 - A later proposed Google OAuth v0.2.0 source archive is **not merged and not verified by GitHub Actions or on device**. Do not call Google login working without actually implementing and testing it.
 - Root `README.md` states the MVP is independently developed. The ZIP's internal README may lag behind; clean up discrepancies if editing that archive.
-- Current README says GPL-2.0-or-later, selected for this independently authored project, **not inherited from the other project's code**. Do not change its license without the owner's explicit decision. If the owner wants permissive licensing, audit code and all third-party dependencies first; present MIT vs Apache-2.0 options.
+- On 2026-10-25, the owner explicitly chose Apache-2.0 after a source/dependency audit. Current application-owned Git source uses Apache-2.0; see `docs/LICENSING.md`. The historical ZIP retains its original GPL-2.0-or-later license. Google SDK components retain separate terms recorded in `THIRD_PARTY_NOTICES.md`. Future license changes still require the owner's explicit decision.
+- Current 0.2.0 development code adds official Google Android authorization and independently implemented Drive REST browsing/private downloads. Google Cloud is not configured yet. Do not claim real-account authorization or private downloads passed device tests until the checklist in `docs/GOOGLE_SETUP.md` is executed with evidence.
+- The owner clarified that inspiration from mizorewww/gdirect's features, public documentation and workflows is welcome. Keep improving the existing Java prototype; independent implementation does not require inventing every feature idea anew. This does not authorize importing its GPL implementation or patches.
 
 ## Engineering milestones
 
@@ -39,6 +41,6 @@ Ordinary standard Android/Google libraries and properly licensed dependencies ar
 
 ## Codex Cloud starting point
 
-Read this file and the root README, inspect the source ZIP and GitHub Actions, then propose and implement the smallest independent improvement that can be built and tested. Focus first on extracting real source files into the repository and retaining a passing CI APK. Then prepare an independently designed login/download milestone. Submit a PR with evidence.
+Read this file, the root README, `docs/GOOGLE_SETUP.md`, and the current workflow. Build and test tracked source directly; the ZIP is historical. Continue with small independently implemented improvements, preserving a working public-download baseline and distinguishing compile/unit/CI evidence from real-account or phone tests. Submit a PR with evidence.
 
 Google login is not preconfigured in this repository. Ask the user for only necessary Google Cloud Console settings and never for password or refresh token.
