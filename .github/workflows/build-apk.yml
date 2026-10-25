@@ -20,23 +20,39 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v5
+      - name: Restore dedicated test signing key when configured
+        env:
+          TEST_KEYSTORE_BASE64: ${{ secrets.GDIRECT_TEST_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$TEST_KEYSTORE_BASE64" ]; then
+            umask 077
+            printf '%s' "$TEST_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/gdirect-test.keystore"
+            keytool -list -keystore "$RUNNER_TEMP/gdirect-test.keystore" -storepass android -alias androiddebugkey > /dev/null
+            printf 'GDIRECT_TEST_KEYSTORE_PATH=%s\n' "$RUNNER_TEMP/gdirect-test.keystore" >> "$GITHUB_ENV"
+            echo 'GDIRECT_SIGNING_MODE=pinned-test' >> "$GITHUB_ENV"
+          else
+            echo 'GDIRECT_SIGNING_MODE=temporary-debug' >> "$GITHUB_ENV"
+            echo '::warning::No dedicated test signing secret. This temporary certificate may not match an existing OAuth client.'
+          fi
       - name: Install Android SDK packages
         run: JAVA_HOME="$JAVA_HOME_21_X64" "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-35' 'build-tools;34.0.0' 'build-tools;35.0.0'
       - name: Test networking and security policies
         run: bash tests/run-java-checks.sh
       - name: Compile and lint the tracked source
         run: ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --no-daemon --max-workers=2
-      - name: APK checksum and signing identity
+      - name: Verify packaged version, code, resources, and signer
         run: |
-          sha256sum app/build/outputs/apk/debug/app-debug.apk > app/build/outputs/apk/debug/SHA256SUMS
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs app/build/outputs/apk/debug/app-debug.apk > app/build/outputs/apk/debug/signing-certificate.txt
+          python3 tools/verify-debug-apk.py \
+            --aapt2 "$ANDROID_HOME/build-tools/35.0.0/aapt2" \
+            --apksigner "$ANDROID_HOME/build-tools/35.0.0/apksigner" \
+            --apk app/build/outputs/apk/debug/app-debug.apk \
+            --revision "$GITHUB_SHA" --run "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            --signing-mode "$GDIRECT_SIGNING_MODE" \
+            --output app/build/outputs/verified-apk
       - uses: actions/upload-artifact@v5
         with:
-          name: GDirectLite-debug-APK
-          path: |
-            app/build/outputs/apk/debug/app-debug.apk
-            app/build/outputs/apk/debug/SHA256SUMS
-            app/build/outputs/apk/debug/signing-certificate.txt
+          name: GDirectLite-0.2.1-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+          path: app/build/outputs/verified-apk/
           if-no-files-found: error
       - uses: actions/upload-artifact@v5
         if: always()

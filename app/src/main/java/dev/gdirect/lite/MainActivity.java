@@ -118,6 +118,8 @@ public final class MainActivity extends Activity {
         root.addView(text("Google Drive 直连下载", 27, INK, true));
         space(root, 7);
         root.addView(text("公开链接下载 · Google Drive 只读浏览", 13, MUTED, false));
+        space(root, 6);
+        root.addView(text(AppDiagnostics.buildLabel(this),13,MUTED,false));
         space(root, 22);
 
         Button myDrive = button(getString(R.string.drive_title), true);

@@ -61,6 +61,8 @@ public final class DriveActivity extends AppCompatActivity {
     private String folder = "root", folderName, nextPage = "";
     private String activeSearch = "";
     private int requestVersion;
+    private Integer lastActivityResult, lastSdkStatus;
+    private String authorizationPhase = "not-requested";
     private boolean loading, authorizing, waitingResolution, wasConnected, transferActive, wasRevoking;
     private final Runnable ticker = new Runnable() {
         @Override public void run() {
@@ -122,6 +124,9 @@ public final class DriveActivity extends AppCompatActivity {
                 else { setEnabled(false); getOnBackPressedDispatcher().onBackPressed(); }
             }
         });
+        TextView identity = label(AppDiagnostics.buildLabel(this),14);
+        identity.setPadding(0,dp(8),0,dp(8));
+        root.addView(identity);
         explanation = label(getString(R.string.drive_consent), 16);
         explanation.setPadding(0,dp(16),0,dp(12));
         root.addView(explanation);
@@ -183,6 +188,8 @@ public final class DriveActivity extends AppCompatActivity {
 
     private void authorize() {
         if (authorizing || GoogleAuthorization.revoking.get()) return;
+        authorizationPhase = "request";
+        lastActivityResult = null; lastSdkStatus = null;
         authorizing = true;
         updateControls();
         message.setText(R.string.drive_authorizing);
@@ -195,6 +202,7 @@ public final class DriveActivity extends AppCompatActivity {
                     try {
                         if (result.getPendingIntent() == null) throw new IOException();
                         waitingResolution = true;
+                        authorizationPhase = "google-consent";
                         startIntentSenderForResult(result.getPendingIntent().getIntentSender(), AUTHORIZE, null, 0, 0, 0);
                     } catch (IntentSender.SendIntentException | IOException error) {
                         authFailed(getString(R.string.drive_auth_failed));
@@ -211,6 +219,8 @@ public final class DriveActivity extends AppCompatActivity {
     @Override protected void onActivityResult(int request, int resultCode, Intent data) {
         super.onActivityResult(request,resultCode,data);
         if (request != AUTHORIZE) return;
+        authorizationPhase = "callback";
+        lastActivityResult = resultCode;
         waitingResolution = false;
         AuthorizationCallback.Result<AuthorizationResult> decoded = AuthorizationCallback.decode(resultCode,data,payload -> {
             try { return Identity.getAuthorizationClient(this).getAuthorizationResultFromIntent(payload); }
@@ -227,6 +237,7 @@ public final class DriveActivity extends AppCompatActivity {
                 authFailed(getString(R.string.drive_scope_missing)); return;
             }
             DriveSession.INSTANCE.connect(result.getAccessToken());
+            authorizationPhase = "authorized";
             authorizing = false; waitingResolution = false;
             clearBrowser();
             load(false);
@@ -235,10 +246,11 @@ public final class DriveActivity extends AppCompatActivity {
 
     private void authFailed(String reason) {
         authorizing = false; waitingResolution = false;
-        message.setText(reason); updateControls();
+        message.setText(getString(R.string.auth_failure_with_build,reason,AppDiagnostics.buildLabel(this))); updateControls();
     }
 
     private void authStatusFailed(int code) {
+        lastSdkStatus = code;
         int reason;
         switch (code) {
             case 10: reason = R.string.drive_auth_config; break;
@@ -377,6 +389,7 @@ public final class DriveActivity extends AppCompatActivity {
     @Override public boolean onCreateOptionsMenu(Menu menu) {
         menu.add(0,1,0,R.string.drive_revoke);
         menu.add(0,2,1,R.string.licenses);
+        menu.add(0,3,2,R.string.diagnostics_title);
         return true;
     }
     @Override public boolean onPrepareOptionsMenu(Menu menu) {
@@ -391,6 +404,7 @@ public final class DriveActivity extends AppCompatActivity {
             return true;
         }
         if (item.getItemId() == 2) { showLicenses(); return true; }
+        if (item.getItemId() == 3) { showDiagnostics(); return true; }
         return super.onOptionsItemSelected(item);
     }
     private void revoke() {
@@ -407,6 +421,18 @@ public final class DriveActivity extends AppCompatActivity {
                     updateControls();
                 }
             });
+    }
+    private void showDiagnostics() {
+        String details = AppDiagnostics.describe(this,authorizationPhase,lastActivityResult,lastSdkStatus);
+        TextView text = label(details,14);
+        text.setTextIsSelectable(true); text.setPadding(dp(20),dp(16),dp(20),dp(16));
+        android.widget.ScrollView scroll = new android.widget.ScrollView(this); scroll.addView(text);
+        new MaterialAlertDialogBuilder(this).setTitle(R.string.diagnostics_title).setView(scroll)
+            .setNegativeButton(android.R.string.cancel,null)
+            .setPositiveButton(R.string.diagnostics_copy,(dialog,which) -> {
+                android.content.ClipboardManager clipboard = (android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText(getString(R.string.diagnostics_title),details));
+            }).show();
     }
     private void showLicenses() {
         new Thread(() -> {

@@ -1,4 +1,8 @@
 <resources>
+    <string name="build_identity">版本 %1$s · 构建 %2$s</string>
+    <string name="auth_failure_with_build">%1$s\n\n%2$s</string>
+    <string name="diagnostics_title">应用与授权诊断</string>
+    <string name="diagnostics_copy">复制诊断信息</string>
     <string name="drive_title">我的 Google Drive</string>
     <string name="back_download">返回下载页</string>
     <string name="drive_root">我的云端硬盘</string>

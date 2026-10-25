@@ -2,6 +2,12 @@ plugins {
     id 'com.android.application'
 }
 
+def buildRevision = providers.gradleProperty('buildRevision')
+    .orElse(providers.environmentVariable('GITHUB_SHA')).getOrElse('local')
+if (!(buildRevision ==~ /[A-Za-z0-9._-]{1,64}/)) {
+    throw new GradleException('Invalid non-secret build revision')
+}
+
 android {
     namespace 'dev.gdirect.lite'
     compileSdk 35
@@ -10,8 +16,16 @@ android {
         applicationId 'dev.gdirect.lite'
         minSdk 29
         targetSdk 35
-        versionCode 2
-        versionName '0.2.0'
+        versionCode 3
+        versionName '0.2.1-diagnostic'
+        buildConfigField 'String', 'REVISION', '"' + buildRevision + '"'
+    }
+
+    buildFeatures { buildConfig true }
+
+    def testKeystore = providers.environmentVariable('GDIRECT_TEST_KEYSTORE_PATH').orNull
+    if (testKeystore != null) {
+        signingConfigs.debug.storeFile = file(testKeystore)
     }
 
     compileOptions {

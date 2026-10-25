@@ -30,13 +30,34 @@
 
 Android Studio、本地云环境和不同 GitHub Actions 运行生成的临时 debug keystore **可能不同**，因此 SHA-1 可能不同。本次普通 CI 不上传或固定签名私钥；不能假定给某个本地 APK 注册的 OAuth 客户端也适用于任意 CI APK。持续测试应使用维护者安全管理的稳定签名，再为其注册 Android 客户端。不要提交 keystore、签名口令或其他凭据。正式发布还需注册实际发行签名；使用 Play App Signing 时以 Play Console 的 app signing certificate 为准。
 
-CI 的 `GDirectLite-debug-APK` 工件同时包含 `signing-certificate.txt` 和 `SHA256SUMS`，可查看该工件中 APK 的实际 SHA-1 及 SHA-256，不包含签名私钥。
+诊断版的 CI 工件名包含版本和运行编号，例如 `GDirectLite-0.2.1-diagnostic-RUN-ATTEMPT`。APK 文件名也包含版本、提交和运行编号，并附有 `APK-IDENTITY.json`、`signing-certificate.txt` 和 `SHA256SUMS`。这些文件只含公开构建/证书信息，不含签名私钥。旧版 `GDirectLite-debug-APK` 工件不具备新版标识，不能用文件名 `app-debug.apk` 或版本号 `0.2.0` 判断是否安装了修正版。
+
+### 固定后续测试签名
+
+当前集成没有读取/管理仓库 Actions Secrets 的权限，不能替维护者配置持久测试签名。工作流支持维护者提供 `GDIRECT_TEST_KEYSTORE_BASE64`：这是专用 Android 测试 keystore 的 Base64，使用标准 debug alias/password（`androiddebugkey` / `android`），只用于测试，不用于正式发布。私钥只应保存在安全目录及 GitHub 加密 Secret，不能提交到 Git 或发送到聊天。
+
+维护者在自己的可信机器上准备好 JDK `keytool` 和具有该仓库 Secrets 写权限的 `gh`，选择仓库外的安全目录，可执行：
+
+```sh
+# 第一次只准备/复用专用测试签名，不上传、不覆盖已有签名。
+bash tools/configure-test-signing.sh /secure/existing/parent
+# 审阅其公开签名指纹并决定使用后，明确授权写入 GitHub Secret。
+bash tools/configure-test-signing.sh /secure/existing/parent --publish-secret
+```
+
+后一个命令会设置/更新仓库的 `GDIRECT_TEST_KEYSTORE_BASE64`。保留同一个安全目录可复用同一把测试签名；不要用别的目录反复生成新签名。随后在 Google Cloud 为同一包名添加与该证书 SHA-1 匹配的 Android OAuth 客户端，并重新构建。不要删除旧客户端来猜测修复。
+
+未配置该 Secret 时，CI 仍可完成测试和构建，但工件会明确记录 `temporary-debug` 并给出警告，不能假定它匹配任何现有 OAuth 客户端。配置后记录为 `pinned-test`。来自外部 fork 的 PR 不应获得此 Secret。
 
 ## 选完账号立即返回怎么办
 
 账号选择器能打开不代表 Android OAuth 客户端已注册正确。若没有进入云盘只读权限同意页，先检查同一个 Cloud 项目中的 Android 客户端：包名是否为 `dev.gdirect.lite`，SHA-1 是否来自当前安装的 APK，以及所选账号是否已加入该项目的测试用户。单独启用 Drive API 不能替代这些 OAuth 配置。
 
 旧预览版把所有非 `RESULT_OK` 的回调直接显示为“已取消授权”，会掩盖 SDK 返回的实际错误。修正版先解析返回的 Intent，只展示非敏感的数字状态码；没有结果时明确说明原因未知，不断言用户主动取消。状态 10 指向开发者/OAuth 配置问题；7/15 指向网络/超时；16 表示 SDK 报告授权未完成，并不能单凭该码确定 API 开关状态。
+
+`0.2.1-diagnostic` 在下载页和 Drive 页顶部显示版本/构建，授权错误也附带该标识。Drive 页菜单“应用与授权诊断”会读取**实际安装包**的 SHA-1，显示 Google Play 服务版本/可用性及本次授权返回码；点击“复制诊断信息”后可用于核对。它不读取账号、令牌、文件列表或下载链接。
+
+本次反馈中，维护者报告已为构建 `40187918710` 配置 API、只读权限、测试用户和 Android 客户端，但手机仍显示旧版文案。不能仅凭控制台完成记录确定手机安装包的签名。先核对手机的版本/构建/实际 SHA-1，再决定下一步；不要重复要求已经完成的 Cloud 初始化。
 
 拿到授权后仍需确保 **同一项目** 的 Google Drive API 已启用。文件列表请求被拒绝时也可能涉及权限或配额；没有 Google Cloud 控制台信息或具体服务错误证据，不能把所有 403 都归结为未启用 API。
 

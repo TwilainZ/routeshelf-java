@@ -2,7 +2,7 @@
 
 受 [mizorewww/gdirect](https://github.com/mizorewww/gdirect) 的功能与使用思路启发，基于现有 Java Android 原型继续开发的 Google Drive 客户端。应用代码独立实现，没有移植该项目的源码、aria2 补丁或原生二进制；非 Google 或该项目作者的官方应用。
 
-## 当前版本：0.2.0 开发预览
+## 当前版本：0.2.1-diagnostic 开发预览
 
 Android 10（API 29）及以上，无需 Root。
 
@@ -25,7 +25,7 @@ bash tests/run-java-checks.sh
 
 Gradle Wrapper 固定 8.9，并校验分发包 SHA-256。Android Gradle Plugin 固定 8.7.3。APK 位于 `app/build/outputs/apk/debug/app-debug.apk`，测试与 Lint 报告位于 `app/build/reports/`。
 
-[GitHub Actions](.github/workflows/build-apk.yml) 对 `main` / `dev/**` 推送和 PR 直接构建源码，执行检查并上传 `GDirectLite-debug-APK`。默认 CI debug 签名是临时签名，不能当作正式发布签名。
+[GitHub Actions](.github/workflows/build-apk.yml) 对 `main` / `dev/**` 推送和 PR 直接构建源码，执行检查后再直接检验 APK 内的版本、提交、诊断资源及签名，上传以版本和运行编号命名的诊断工件。可在手机页面顶部查看版本/构建，并从 Drive 页菜单复制实际安装包的签名与授权诊断。它帮助区分安装包和错误阶段，不表示真实 Google 登录已修好。测试签名的持久配置与当前限制见 [配置文档](docs/GOOGLE_SETUP.md)。
 
 ## Google 登录配置
 
