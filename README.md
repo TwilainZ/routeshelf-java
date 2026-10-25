@@ -18,8 +18,8 @@
 
 ### 方式 A：GitHub Actions（最适合没有 Android Studio 的情况）
 
-1. 此仓库根目录保存 `GDirectLiteAndroid-source.zip`，工作流 `.github/workflows/import-and-build.yml` 会自动解压并编译。
-2. 上传 ZIP 或修改工作流后会自动运行，也可以从仓库 **Actions** 页面查看运行记录。
+1. Android 源码已整理到 `app/`，工作流 `.github/workflows/build-apk.yml` 直接构建版本控制中的代码。
+2. 推送 `main` / `dev/**` 或创建 Pull Request 会自动运行 Java 测试、APK 构建及 Android Lint。
 3. 等待 workflow 成功，打开对应的工作流运行记录，在 **Artifacts** 下载 `GDirectLite-debug-APK`。
 4. 解压得到 `app-debug.apk`，传给安卓手机并安装。
 
@@ -27,10 +27,11 @@ GitHub Actions 在构建期间下载 Android SDK、Gradle 和依赖；需要网�
 
 ### 方式 B：Android Studio
 
-使用较新的 Android Studio，安装 Android SDK API 35、JDK 17，并打开本项目目录。使用 Gradle 8.9 构建：
+使用 Android Studio 打开仓库根目录，安装 Android SDK API 35、Build Tools 34.0.0 / 35.0.0 和 JDK 17。仓库提供带 SHA-256 校验的 Gradle 8.9 Wrapper：
 
 ```sh
-gradle :app:assembleDebug
+bash tests/run-java-checks.sh
+./gradlew :app:assembleDebug :app:lintDebug --no-daemon --max-workers=2
 ```
 
 APK 默认在 `app/build/outputs/apk/debug/app-debug.apk`。首次构建需要下载 Android Gradle Plugin 8.7.3。
@@ -61,7 +62,9 @@ APK 默认在 `app/build/outputs/apk/debug/app-debug.apk`。首次构建需要�
 - `app/src/main/java/dev/gdirect/lite/DirectNet.java`: Google Drive 链接解析、HTTPS、IP 测试、跳转处理、Google HTML 确认。
 - `app/src/main/java/dev/gdirect/lite/DownloadService.java`: 前台下载、多连接、断点续传、MediaStore 下载保存。
 - `app/src/main/java/dev/gdirect/lite/MainActivity.java`: 手机界面、分享入口、任务控制。
-- `.github/workflows/import-and-build.yml`: 从仓库内源码 ZIP 构建 Android debug APK。
+- `.github/workflows/build-apk.yml`: 从正常 Git 源码构建及检查 Android debug APK。
+
+`GDirectLiteAndroid-source.zip` 暂时保留作历史基线；日常开发请修改 `app/` 和 `tests/`，构建不再解压 ZIP。原归档中的 `setTextAllCaps` 拼写错误已在正式源码修正为 `setAllCaps`。
 
 ## 许可证
 
