@@ -27,6 +27,8 @@ Ordinary standard Android/Google libraries and properly licensed dependencies ar
 
 ## Engineering milestones
 
+Owner clarified the product target: everyday Google Drive app functions (browse/search/preview/upload/download/file management/sharing/trash) PLUS the inspiration project's proxyless direct-data/download capabilities. Signature investigation is not the feature roadmap. Keep the established package/key unchanged and defer owner configuration to consolidated acceptance; prioritize visible file functionality. Read-only library views and PDF/XLSX export are now implemented; write operations/upload/preview/sharing remain incomplete, requiring suitable explicit user consent in the product when implemented.
+
 Owner's delivery preference (2026-10-26): finish a coherent functional/verification phase before requesting Google-client configuration or giving another installer. Stop handing over intermediate APKs. Keep the existing preview package and pinned signer unchanged for feature updates; ordinary updates must not require another OAuth registration. The owner has only a phone. Never treat compilation as completion of real-account/China-network acceptance, and never tell the owner to repeat already-completed Cloud initialization. See docs/RELEASE_GATE.md.
 
 1. **Repository hygiene:** create a development branch, extract `GDirectLiteAndroid-source.zip` into standard tracked source files, fix the `setAllCaps` typo at source, simplify the workflow to build source directly, add repeatable local/CI tests. Preserve a working APK and use a PR for review.

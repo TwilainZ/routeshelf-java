@@ -223,7 +223,9 @@ public final class DownloadService extends Service {
         if (!info.downloadable) throw new IOException("此文件不允许下载，或需要 Google 文档导出（暂不支持）");
         File file = File.createTempFile("drive-private-", ".part", getCacheDir());
         try {
-            HttpsURLConnection c = transport.open(api.mediaUrl(id));
+            boolean exporting = !info.exportMime.isEmpty();
+            HttpsURLConnection c = transport.open(exporting ? api.exportUrl(info) : api.mediaUrl(id));
+            long exportSize = exporting ? c.getContentLengthLong() : -1;
             MessageDigest digest = MessageDigest.getInstance("MD5");
             try (InputStream in = c.getInputStream(); FileOutputStream out = new FileOutputStream(file)) {
                 byte[] buffer = new byte[65536];
@@ -231,7 +233,8 @@ public final class DownloadService extends Service {
                 while ((n = in.read(buffer)) != -1) {
                     requireNotCancelled();
                     lease.requireCurrent();
-                    if (n > info.size - bytes.get()) throw new IOException("文件长度已改变，请重新下载");
+                    if (!exporting && n > info.size - bytes.get()) throw new IOException("文件长度已改变，请重新下载");
+                    if (exporting && bytes.get() + n > 10L * 1024 * 1024) throw new IOException("Google 文档导出超过 10 MiB 限制");
                     out.write(buffer, 0, n);
                     digest.update(buffer, 0, n);
                     bytes.addAndGet(n);
@@ -242,10 +245,12 @@ public final class DownloadService extends Service {
             requireNotCancelled();
             lease.requireCurrent();
             // MD5 is Drive's content checksum, not a cryptographic authentication mechanism.
-            FileIntegrity.verify(bytes.get(), info.size, digest.digest(), info.md5);
+            if (!exporting) FileIntegrity.verify(bytes.get(), info.size, digest.digest(), info.md5);
+            if (exporting && exportSize >= 0 && bytes.get() != exportSize) throw new IOException("导出内容未完整接收，请重试");
             status("校验完成，正在保存到系统下载目录…", info.size);
-            Uri saved = publish(file, TransferRules.safeFilename(info.name), info.mime, lease);
-            return info.mime + "|" + saved;
+            String outputMime = exporting ? info.exportMime : info.mime;
+            Uri saved = publish(file, TransferRules.safeFilename(info.name + (exporting ? info.exportSuffix : "")), outputMime, lease);
+            return outputMime + "|" + saved;
         } finally { file.delete(); }
     }
 

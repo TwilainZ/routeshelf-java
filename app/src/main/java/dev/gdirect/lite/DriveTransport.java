@@ -21,7 +21,7 @@ final class DriveTransport {
     static void requireApiUrl(URL url) throws IOException {
         if (!"https".equals(url.getProtocol()) || !"www.googleapis.com".equals(url.getHost())
             || (url.getPort() != -1 && url.getPort() != 443) || url.getUserInfo() != null
-            || url.getRef() != null || !url.getPath().matches("/drive/v3/files(?:/[A-Za-z0-9_-]{1,200})?"))
+            || url.getRef() != null || !url.getPath().matches("/drive/v3/files(?:/[A-Za-z0-9_-]{1,200}(?:/export)?)?"))
             throw new IOException("已阻止向 Google Drive API 以外的地址发送授权信息");
     }
 

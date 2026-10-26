@@ -55,6 +55,10 @@ public final class DriveActivity extends AppCompatActivity {
     private LinearLayout queryRow;
     private ListView fileList;
     private EditText search;
+    private android.widget.Spinner viewPicker,sortPicker;
+    private TextInputLayout searchField;
+    private DriveApi.View currentView=DriveApi.View.FOLDER;
+    private DriveApi.Sort currentSort=DriveApi.Sort.NAME;
     private Button connect, disconnect, find, more, up;
     private ProgressBar loadingIndicator;
     private Future<?> listing;
@@ -148,7 +152,7 @@ public final class DriveActivity extends AppCompatActivity {
 
         queryRow = new LinearLayout(this);
         queryRow.setGravity(Gravity.CENTER_VERTICAL);
-        TextInputLayout searchField = new TextInputLayout(this);
+        searchField = new TextInputLayout(this);
         searchField.setHint(getString(R.string.drive_search_hint));
         search = new TextInputEditText(searchField.getContext());
         search.setSingleLine(true); search.setTextSize(16); search.setMinHeight(dp(48));
@@ -166,6 +170,36 @@ public final class DriveActivity extends AppCompatActivity {
         queryRow.addView(find, findParams);
         find.setOnClickListener(v -> startSearch());
         root.addView(queryRow);
+        viewPicker = new android.widget.Spinner(this);
+        android.widget.ArrayAdapter<CharSequence> views = android.widget.ArrayAdapter.createFromResource(this,R.array.drive_views,android.R.layout.simple_spinner_item);
+        views.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item); viewPicker.setAdapter(views);
+        viewPicker.setMinimumHeight(dp(48)); viewPicker.setContentDescription(getString(R.string.drive_view));
+        root.addView(viewPicker);
+        viewPicker.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            public void onNothingSelected(android.widget.AdapterView<?> p) { }
+            public void onItemSelected(android.widget.AdapterView<?> p,View v,int n,long id) {
+                DriveApi.View selected=DriveApi.View.values()[n];
+                if(selected==currentView || !DriveSession.INSTANCE.connected())return;
+                currentView=selected; parents.clear(); folder="root"; activeSearch=""; search.setText("");
+                folderName=getResources().getStringArray(R.array.drive_views)[n]; location.setText(folderName);
+                searchField.setHint(getString(selected==DriveApi.View.FOLDER?R.string.drive_search_hint:R.string.drive_search_all));
+                if(selected==DriveApi.View.RECENT) { currentSort=DriveApi.Sort.MODIFIED; sortPicker.setSelection(2); }
+                load(false);
+            }
+        });
+        sortPicker = new android.widget.Spinner(this);
+        android.widget.ArrayAdapter<CharSequence> sorts = android.widget.ArrayAdapter.createFromResource(this,R.array.drive_sorts,android.R.layout.simple_spinner_item);
+        sorts.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item); sortPicker.setAdapter(sorts);
+        sortPicker.setMinimumHeight(dp(48)); sortPicker.setContentDescription(getString(R.string.drive_sort));
+        root.addView(sortPicker);
+        sortPicker.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            public void onNothingSelected(android.widget.AdapterView<?> p) { }
+            public void onItemSelected(android.widget.AdapterView<?> p,View v,int n,long id) {
+                DriveApi.Sort selected=DriveApi.Sort.values()[n];
+                if(selected==currentSort || !DriveSession.INSTANCE.connected())return;
+                currentSort=selected; load(false);
+            }
+        });
         location = label(folderName,16);
         location.setPadding(0,dp(8),0,dp(8));
         location.setAccessibilityHeading(true);
@@ -285,6 +319,8 @@ public final class DriveActivity extends AppCompatActivity {
         if (listing != null) listing.cancel(true);
         loading = false;
         files.clear(); nextPage = ""; parents.clear(); folder = "root"; activeSearch = "";
+        currentView=DriveApi.View.FOLDER; currentSort=DriveApi.Sort.NAME;
+        viewPicker.setSelection(0); sortPicker.setSelection(0); searchField.setHint(getString(R.string.drive_search_hint));
         folderName = getString(R.string.drive_root);
         search.setText("");
         location.setText(folderName); adapter.notifyDataSetChanged();
@@ -301,6 +337,8 @@ public final class DriveActivity extends AppCompatActivity {
         disconnect.setEnabled(!authorizing);
         explanation.setVisibility(wasConnected ? View.GONE : View.VISIBLE);
         queryRow.setVisibility(wasConnected ? View.VISIBLE : View.GONE);
+        viewPicker.setVisibility(wasConnected?View.VISIBLE:View.GONE); sortPicker.setVisibility(wasConnected?View.VISIBLE:View.GONE);
+        viewPicker.setEnabled(!loading); sortPicker.setEnabled(!loading);
         location.setVisibility(wasConnected ? View.VISIBLE : View.GONE);
         search.setEnabled(wasConnected && !loading);
         find.setEnabled(wasConnected && !loading);
@@ -327,11 +365,12 @@ public final class DriveActivity extends AppCompatActivity {
         int version = ++requestVersion;
         if (listing != null) listing.cancel(true);
         String queryFolder = folder, query = activeSearch, page = append ? nextPage : "";
+        DriveApi.View queryView=currentView; DriveApi.Sort querySort=currentSort;
         if (!append) { files.clear(); nextPage = ""; adapter.notifyDataSetChanged(); }
         loading = true; updateControls(); message.setText(R.string.drive_loading);
         listing = network.submit(() -> {
             try {
-                DriveApi.Page result = new DriveApi(GoogleAuthorization.transport(this,lease)).list(queryFolder,query,page);
+                DriveApi.Page result = new DriveApi(GoogleAuthorization.transport(this,lease)).list(queryFolder,query,page,queryView,querySort);
                 handler.post(() -> {
                     if (isDestroyed() || version != requestVersion) return;
                     try { lease.requireCurrent(); } catch (DriveSession.AuthorizationRequired error) { clearBrowser(); return; }
@@ -351,13 +390,16 @@ public final class DriveActivity extends AppCompatActivity {
     }
 
     private void enterFolder(DriveApi.FileEntry entry) {
-        parents.push(new String[]{folder,folderName});
+        parents.push(new String[]{folder,folderName,currentView.name()});
+        currentView=DriveApi.View.FOLDER; viewPicker.setSelection(0); searchField.setHint(getString(R.string.drive_search_hint));
         folder = entry.id; folderName = entry.name; activeSearch = "";
         search.setText(""); location.setText(folderName); load(false);
     }
     private void goUp() {
         if (parents.isEmpty()) { finish(); return; }
         String[] previous = parents.pop(); folder = previous[0]; folderName = previous[1]; activeSearch = "";
+        currentView=DriveApi.View.valueOf(previous[2]); viewPicker.setSelection(currentView.ordinal());
+        searchField.setHint(getString(currentView==DriveApi.View.FOLDER?R.string.drive_search_hint:R.string.drive_search_all));
         search.setText(""); location.setText(folderName); load(false);
     }
 
@@ -383,14 +425,20 @@ public final class DriveActivity extends AppCompatActivity {
             LinearLayout row = column(); row.setPadding(0,dp(12),0,dp(12));
             TextView name = label(entry.name,16); name.setMaxLines(2); name.setEllipsize(TextUtils.TruncateAt.END);
             row.addView(name);
-            String detail = entry.folder ? getString(R.string.drive_folder) : entry.downloadable
+            String detail = entry.folder ? getString(R.string.drive_folder) : !entry.exportMime.isEmpty() && entry.downloadable ? getString(R.string.drive_export_format,entry.exportSuffix) : entry.downloadable
                 ? android.text.format.Formatter.formatFileSize(DriveActivity.this,entry.size) : getString(R.string.drive_unsupported);
             TextView subtitle = label(detail,14); row.addView(subtitle);
             Button action = button(entry.folder ? R.string.drive_open_folder : R.string.drive_download);
             action.setContentDescription(getString(entry.folder ? R.string.drive_open_folder_named : R.string.drive_download_named,entry.name));
             action.setEnabled(!loading && (entry.folder || entry.downloadable && !DownloadService.snapshot.active));
             action.setOnClickListener(v -> { if (entry.folder) enterFolder(entry); else download(entry); });
+            if(!entry.exportMime.isEmpty() && entry.downloadable)action.setText(R.string.drive_export);
             row.addView(action,new LinearLayout.LayoutParams(-1,-2));
+            Button details=button(R.string.drive_details);
+            details.setOnClickListener(v -> new MaterialAlertDialogBuilder(DriveActivity.this).setTitle(entry.name)
+                .setMessage(getString(R.string.drive_details_body,entry.mime,entry.size<0?getString(R.string.drive_size_unknown):android.text.format.Formatter.formatFileSize(DriveActivity.this,entry.size),entry.modified.isEmpty()?getString(R.string.drive_size_unknown):entry.modified))
+                .setPositiveButton(android.R.string.ok,null).show());
+            row.addView(details,new LinearLayout.LayoutParams(-1,-2));
             return row;
         }
     }

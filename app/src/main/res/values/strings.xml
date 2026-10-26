@@ -1,4 +1,14 @@
 <resources>
+    <string name="drive_view">文件范围</string>
+    <string name="drive_sort">排序方式</string>
+    <string name="drive_search_all">在此范围中搜索文件</string>
+    <string name="drive_export">导出到设备</string>
+    <string name="drive_export_format">可导出为 %1$s</string>
+    <string name="drive_details">文件详情</string>
+    <string name="drive_details_body">类型：%1$s\n大小：%2$s\n修改时间：%3$s</string>
+    <string name="drive_size_unknown">未提供</string>
+    <string-array name="drive_views"><item>我的云端硬盘</item><item>所有文件</item><item>最近修改</item><item>已加星标</item><item>与我共享</item><item>回收站</item></string-array>
+    <string-array name="drive_sorts"><item>名称升序</item><item>名称降序</item><item>最近修改优先</item><item>占用空间从大到小</item></string-array>
     <string name="build_identity">版本 %1$s · 构建 %2$s</string>
     <string name="auth_failure_with_build">%1$s\n\n%2$s</string>
     <string name="diagnostics_title">应用与授权诊断</string>
@@ -27,7 +37,7 @@
     <string name="drive_empty">此文件夹没有符合条件的文件。可清空搜索词后重试。</string>
     <string name="drive_file_count">已加载 %1$d 项</string>
     <string name="drive_folder">文件夹</string>
-    <string name="drive_unsupported">不可下载，或需 Google 文档导出（暂不支持）</string>
+    <string name="drive_unsupported">此文件暂不可下载或导出</string>
     <string name="drive_open_folder">打开文件夹</string>
     <string name="drive_download">下载到设备</string>
     <string name="drive_open_folder_named">打开文件夹：%1$s</string>
