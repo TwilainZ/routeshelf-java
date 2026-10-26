@@ -77,6 +77,7 @@ jobs:
             --signing-mode temporary-debug \
             --output app/build/outputs/verified-inspector
       - uses: actions/upload-artifact@v5
+        if: env.GDIRECT_SIGNING_MODE == 'pinned-test'
         with:
           name: GDirectLite-0.3.0-direct-preview-${{ github.run_id }}-${{ github.run_attempt }}
           path: app/build/outputs/verified-apk/

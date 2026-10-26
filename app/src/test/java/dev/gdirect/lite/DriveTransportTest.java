@@ -15,10 +15,11 @@ public final class DriveTransportTest {
         final int code;
         boolean closed;
         byte[] body = "{\"files\":[]}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        String retryAfter;
         Fake(URL url, int code) { super(url); this.code = code; }
         @Override public int getResponseCode() { return code; }
         @Override public InputStream getInputStream() { return new ByteArrayInputStream(body); }
-        @Override public String getHeaderField(String name) { return "Location".equals(name) ? "https://example.net/steal" : null; }
+        @Override public String getHeaderField(String name) { return "Retry-After".equals(name) ? retryAfter : ("Location".equals(name) ? "https://example.net/steal" : null); }
         @Override public void disconnect() { closed = true; }
         @Override public boolean usingProxy() { return false; }
         @Override public void connect() { }
@@ -72,5 +73,22 @@ public final class DriveTransportTest {
         assertTrue(c.closed);
         c.body = new byte[1024*1024+1];
         assertThrows(IOException.class, () -> transport.json(url));
+    }
+
+    @Test public void throttledReadRetriesWithoutFollowingRedirectsOrChangingCredentials() throws Exception {
+        DriveSession session = new DriveSession(); session.connect("unit-test-token");
+        URL url = new URL("https://www.googleapis.com/drive/v3/files");
+        AtomicInteger calls = new AtomicInteger();
+        java.util.List<Fake> connections = new java.util.ArrayList<>();
+        DriveTransport transport = new DriveTransport(session.lease(), target -> {
+            Fake c = new Fake(target,calls.incrementAndGet() < 3 ? 429 : 200);
+            c.retryAfter="0"; connections.add(c); return c;
+        }, () -> fail("must not invalidate a valid session"));
+        assertEquals("{\"files\":[]}",transport.json(url));
+        assertEquals(3,calls.get());
+        for(Fake c:connections) {
+            assertEquals("Bearer unit-test-token",c.getRequestProperty("Authorization"));
+            assertFalse(c.getInstanceFollowRedirects()); assertTrue(c.closed);
+        }
     }
 }

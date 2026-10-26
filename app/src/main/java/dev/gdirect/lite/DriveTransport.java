@@ -44,7 +44,8 @@ final class DriveTransport {
             }
             if (code == 403) throw new IOException("Google 拒绝访问：请检查文件下载权限、Drive API 配置或配额");
             if (code == 404) throw new IOException("文件不存在，或当前 Google 账号无权访问");
-            if (code == 429) throw new IOException("Google 请求过于频繁，请稍后重试");
+            if (code == 429 || code == 500 || code == 502 || code == 503 || code == 504)
+                throw new ReadRetry.Unavailable(code,c.getHeaderField("Retry-After"));
             if (code >= 300 && code < 400) throw new IOException("私人文件请求返回跳转；为保护令牌已停止，请稍后重试");
             if (code != 200) throw new IOException("Google Drive 请求失败（HTTP " + code + "），请稍后重试");
             return c;
@@ -52,6 +53,10 @@ final class DriveTransport {
     }
 
     String json(URL url) throws IOException {
+        return ReadRetry.run(() -> jsonOnce(url),lease::requireCurrent);
+    }
+
+    private String jsonOnce(URL url) throws IOException {
         HttpsURLConnection c = open(url);
         try (InputStream in = c.getInputStream(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             byte[] buffer = new byte[8192];

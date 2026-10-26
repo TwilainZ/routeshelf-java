@@ -27,6 +27,8 @@ Ordinary standard Android/Google libraries and properly licensed dependencies ar
 
 ## Engineering milestones
 
+Owner's delivery preference (2026-10-26): finish a coherent functional/verification phase before requesting Google-client configuration or giving another installer. Stop handing over intermediate APKs. Keep the existing preview package and pinned signer unchanged for feature updates; ordinary updates must not require another OAuth registration. The owner has only a phone. Never treat compilation as completion of real-account/China-network acceptance, and never tell the owner to repeat already-completed Cloud initialization. See docs/RELEASE_GATE.md.
+
 1. **Repository hygiene:** create a development branch, extract `GDirectLiteAndroid-source.zip` into standard tracked source files, fix the `setAllCaps` typo at source, simplify the workflow to build source directly, add repeatable local/CI tests. Preserve a working APK and use a PR for review.
 2. **Independent architecture:** design original networking modules, Android download service, file list and auth UI using official Android and Google Drive docs. Explain tradeoffs and test behavior, without reusing another project's implementation.
 3. **Strengthen download engine:** support redirects, public download/confirmation page handling, HTTP Range capability checks, concurrent workers, robust resume/checksums, retries/backoff, error reporting, cancellation, battery-aware service behavior, and safe filenames.

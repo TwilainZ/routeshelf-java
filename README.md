@@ -4,6 +4,8 @@
 
 ## 当前版本：0.3.0-direct-preview 开发预览
 
+当前按 [阶段验收与统一交付](docs/RELEASE_GATE.md) 完善功能；中间提交不反复发安装包或要求 Google 配置。预览身份和证书固定，普通更新无需重新注册客户端。
+
 Android 10（API 29）及以上，无需 Root。
 
 - **自动直连**：首次使用自动并行检测服务 IP，标准 TLS / 无 SNI 均严格校验证书；按域名缓存 24 小时，失败后换线。公开下载、私人浏览和私人下载共用数据通道，无需手工找 IP。详见 [直连说明及验证边界](docs/DIRECT_NETWORK.md)。
@@ -26,7 +28,7 @@ bash tests/run-java-checks.sh
 
 Gradle Wrapper 固定 8.9，并校验分发包 SHA-256。Android Gradle Plugin 固定 8.7.3。APK 位于 `app/build/outputs/apk/debug/app-debug.apk`，测试与 Lint 报告位于 `app/build/reports/`。
 
-[GitHub Actions](.github/workflows/build-apk.yml) 对 `main` / `dev/**` 推送和 PR 直接构建源码，执行检查后再直接检验 APK 内的版本、提交、诊断资源及签名，上传以版本和运行编号命名的诊断工件。可在手机页面顶部查看版本/构建，并从 Drive 页菜单复制实际安装包的签名与授权诊断。它帮助区分安装包和错误阶段，不表示真实 Google 登录已修好。测试签名的持久配置与当前限制见 [配置文档](docs/GOOGLE_SETUP.md)。
+[GitHub Actions](.github/workflows/build-apk.yml) 对 `main` / `dev/**` 推送和 PR 直接构建源码，执行检查后再直接检验 APK 内的版本、提交、诊断资源及签名，固定测试签名可用时才上传对应 APK 工件；临时随机签名的主 APK 仅用于内部构建检查，不再作为升级包发布。可在手机页面顶部查看版本/构建，并从 Drive 页菜单复制实际安装包的签名与授权诊断。它帮助区分安装包和错误阶段，不表示真实 Google 登录已修好。测试签名的持久配置与当前限制见 [配置文档](docs/GOOGLE_SETUP.md)。
 
 ## Google 登录配置
 

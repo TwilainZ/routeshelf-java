@@ -202,6 +202,18 @@ public final class DownloadService extends Service {
     }
 
     private String downloadPrivate(String id, long expectedSession) throws Exception {
+        return ReadRetry.run(() -> {
+            bytes.set(0);
+            try { return downloadPrivateOnce(id,expectedSession); }
+            catch (IOException error) { throw error; }
+            catch (Exception error) { throw new IOException("私人文件处理失败",error); }
+        }, () -> {
+            requireNotCancelled();
+            if (DriveSession.INSTANCE.lease().id() != expectedSession) throw new DriveSession.AuthorizationRequired();
+        });
+    }
+
+    private String downloadPrivateOnce(String id, long expectedSession) throws Exception {
         DriveSession.Lease lease = DriveSession.INSTANCE.lease();
         if (lease.id() != expectedSession) throw new DriveSession.AuthorizationRequired();
         DriveTransport transport = GoogleAuthorization.transport(this, lease);
