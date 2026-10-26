@@ -30,6 +30,8 @@ Gradle Wrapper 固定 8.9，并校验分发包 SHA-256。Android Gradle Plugin �
 
 ## Google 登录配置
 
+已有 v0.2.0 用户测试新版时，使用应用名为 **GDirect Lite 测试版**、包名 `dev.gdirect.lite.preview` 的并存包，保留旧版。它使用固定测试证书，打包器会核对 `config/preview-signing.json`，缺少原密钥时拒绝生成可交付 APK。测试版的 Google 登录需在同一 Cloud 项目为新包名及其签名新增 Android OAuth 客户端；原客户端保留，无需重新启用 Drive API。详见 [并存测试版](docs/GOOGLE_SETUP.md#并存测试版解决安装签名冲突)。
+
 如果手机反复出现相同错误且无法确认安装包，可使用 CI 的独立 `GDirectLite-inspector-运行编号` 工件。它安装为“GDirect 安装包检查”（包名 `dev.gdirect.lite.probe`），与原应用并存，读取原应用实际版本、签名及错误资源标记；不进行登录、不访问私有数据、没有 INTERNET 权限。无需修改原应用或为检查工具配置 OAuth。本地可执行 `./gradlew :inspector:assembleDebug :inspector:lintDebug`，详情见配置文档中的离线检查章节。
 
 按 [GOOGLE_SETUP.md](docs/GOOGLE_SETUP.md) 启用 Drive API、设置同意屏幕和测试用户，注册包名 `dev.gdirect.lite` 与实际 APK 签名 SHA-1 的 **Android OAuth 客户端**。需要带 Google Play 服务的设备。

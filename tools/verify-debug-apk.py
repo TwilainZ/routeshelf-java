@@ -17,7 +17,9 @@ parser.add_argument('--revision', required=True)
 parser.add_argument('--run', default='local')
 parser.add_argument('--signing-mode', choices=('pinned-test', 'temporary-debug'), default='temporary-debug')
 parser.add_argument('--output', type=Path, required=True)
-parser.add_argument('--probe', action='store_true', help='Verify the separate offline installed-package inspector')
+role = parser.add_mutually_exclusive_group()
+role.add_argument('--probe', action='store_true', help='Verify the separate offline installed-package inspector')
+role.add_argument('--preview', action='store_true', help='Verify the coexisting app and its pinned test certificate')
 args = parser.parse_args()
 if not re.fullmatch(r'[A-Za-z0-9._-]{1,64}', args.revision) or not re.fullmatch(r'[A-Za-z0-9._-]{1,64}', args.run):
     raise SystemExit('Invalid build identity')
@@ -27,7 +29,7 @@ def command(*parts):
 
 badging = command(args.aapt2, 'dump', 'badging', str(args.apk))
 package = re.search(r"package: name='([^']+)' versionCode='([^']+)' versionName='([^']+)'", badging)
-expected_package = 'dev.gdirect.lite.probe' if args.probe else 'dev.gdirect.lite'
+expected_package = 'dev.gdirect.lite.probe' if args.probe else ('dev.gdirect.lite.preview' if args.preview else 'dev.gdirect.lite')
 expected_version = '0.2.1-diagnostic-probe' if args.probe else '0.3.0-direct-preview'
 expected_code = '3' if args.probe else '4'
 if not package or package.groups() != (expected_package, expected_code, expected_version):
@@ -63,7 +65,13 @@ sha1 = re.findall(r'Signer #\d+ certificate SHA-1 digest: ([a-fA-F0-9]{40})', ce
 if not sha1:
     raise SystemExit('APK certificate fingerprint unavailable')
 sha1 = [':'.join(value[i:i+2] for i in range(0,len(value),2)).upper() for value in sha1]
-prefix = 'GDirectLite-inspector' if args.probe else 'GDirectLite'
+if args.preview:
+    pin = json.loads((Path(__file__).resolve().parents[1] / 'config/preview-signing.json').read_text())
+    if sha1 != [pin['certificateSha1']] or args.signing_mode != 'pinned-test':
+        raise SystemExit('Preview certificate is not the retained pinned test key; refusing delivery')
+    if pin['package'] != expected_package or 'GDirect Lite 测试版' not in badging:
+        raise SystemExit('Preview identity/launcher label does not match the coexisting application')
+prefix = 'GDirectLite-inspector' if args.probe else ('GDirectLite-preview' if args.preview else 'GDirectLite')
 filename = f'{prefix}-{package[3]}-{args.revision}-{args.run}.apk'
 expected_files = {filename, 'APK-IDENTITY.json', 'signing-certificate.txt', 'SHA256SUMS'}
 if args.output.exists() and any(path.is_dir() or path.name not in expected_files for path in args.output.iterdir()):
@@ -78,6 +86,8 @@ identity = dict(package=package[1], versionCode=int(package[2]), versionName=pac
                 oldCancellationMessagePresent=False)
 if args.probe:
     identity.update(offlinePackageInspector=True, internetPermission=False, targetPackage='dev.gdirect.lite')
+if args.preview:
+    identity.update(coexistsWith='dev.gdirect.lite', requiresOwnAndroidOAuthClient=True)
 (args.output / 'APK-IDENTITY.json').write_text(json.dumps(identity, indent=2) + '\n')
 (args.output / 'signing-certificate.txt').write_text(certificates)
 (args.output / 'SHA256SUMS').write_text(f'{sha256}  {filename}\n')

@@ -36,10 +36,30 @@ jobs:
           fi
       - name: Install Android SDK packages
         run: JAVA_HOME="$JAVA_HOME_21_X64" "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-35' 'build-tools;34.0.0' 'build-tools;35.0.0'
+      - name: Restore pinned preview key only when configured
+        env:
+          PREVIEW_KEYSTORE_BASE64: ${{ secrets.GDIRECT_PREVIEW_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$PREVIEW_KEYSTORE_BASE64" ]; then
+            umask 077
+            printf '%s' "$PREVIEW_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/gdirect-preview.keystore"
+            printf 'GDIRECT_PREVIEW_KEYSTORE_PATH=%s\n' "$RUNNER_TEMP/gdirect-preview.keystore" >> "$GITHUB_ENV"
+          else
+            echo '::notice::Preview source will be compiled/tested/linted. No installable preview will be published without its retained signing key.'
+          fi
       - name: Test networking and security policies
         run: bash tests/run-java-checks.sh
       - name: Compile and lint the tracked source
-        run: ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug :inspector:assembleDebug :inspector:lintDebug --no-daemon --max-workers=2
+        run: ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug :app:testPreviewUnitTest :app:lintPreview :inspector:assembleDebug :inspector:lintDebug --no-daemon --max-workers=2
+      - name: Package and verify coexisting preview with retained key
+        if: env.GDIRECT_PREVIEW_KEYSTORE_PATH != ''
+        run: bash tools/build-preview-apk.sh
+      - uses: actions/upload-artifact@v5
+        if: env.GDIRECT_PREVIEW_KEYSTORE_PATH != ''
+        with:
+          name: GDirectLite-coexisting-preview-${{ github.run_id }}-${{ github.run_attempt }}
+          path: app/build/outputs/verified-preview/
+          if-no-files-found: error
       - name: Verify packaged version, code, resources, and signer
         run: |
           python3 tools/verify-debug-apk.py \
