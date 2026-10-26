@@ -21,6 +21,19 @@ public final class DirectRoutesTest {
         public void remove(String host) { values.remove(host); }
         public void clear() { values.clear(); }
     }
+    @Test public void knownThirdPartyRelayCannotReturnThroughDnsHistoryOrCachedRoute()throws Exception {
+        String relay="183.56.143.147";
+        assertTrue(DirectRoutes.publicIpv4(relay));assertFalse(DirectRoutes.automaticAddress(relay));
+        assertTrue(DirectRoutes.candidates(Collections.singletonList(relay),Collections.singletonList(relay),Collections.singletonList(relay)).isEmpty());
+        Memory memory=new Memory();memory.save(HOST,new DirectRoutes.Route(HOST,relay,DirectRoutes.TlsMode.NO_SNI,System.currentTimeMillis()));
+        AtomicInteger probes=new AtomicInteger();
+        DirectRoutes routes=new DirectRoutes(host->Arrays.asList(relay,"8.8.8.8"),route->{
+            assertNotEquals(relay,route.ip);probes.incrementAndGet();
+        },memory,message->{});
+        assertEquals("8.8.8.8",routes.select(HOST,Collections.emptySet()).ip);assertTrue(probes.get()>0);
+        assertNotEquals(relay,memory.load(HOST).ip);
+    }
+
     @Test public void reusesFreshCachePerHostAndReprobesExpiredCache() throws Exception {
         Memory memory = new Memory(); AtomicInteger discoveries = new AtomicInteger();
         DirectRoutes routes = new DirectRoutes(host -> { discoveries.incrementAndGet(); return Arrays.asList("8.8.8.8","8.8.4.4"); },

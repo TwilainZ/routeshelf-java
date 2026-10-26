@@ -79,7 +79,7 @@ jobs:
       - uses: actions/upload-artifact@v5
         if: env.GDIRECT_SIGNING_MODE == 'pinned-test'
         with:
-          name: GDirectLite-0.4.0-client-preview-${{ github.run_id }}-${{ github.run_attempt }}
+          name: GDirectLite-0.5.0-google-preview-${{ github.run_id }}-${{ github.run_attempt }}
           path: app/build/outputs/verified-apk/
           if-no-files-found: error
       - uses: actions/upload-artifact@v5

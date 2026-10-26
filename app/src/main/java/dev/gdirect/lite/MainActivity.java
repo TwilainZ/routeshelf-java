@@ -162,10 +162,10 @@ public final class MainActivity extends AppCompatActivity {
         LinearLayout network = card(root);networkPanel=network;
         network.setVisibility(savedInstanceState!=null&&savedInstanceState.getBoolean("network_expanded")?View.VISIBLE:View.GONE);
         settingsToggle.setOnClickListener(v->{network.setVisibility(network.getVisibility()==View.VISIBLE?View.GONE:View.VISIBLE);});
-        heading(network, "数据连接", "自动直连用于公开下载、私人文件浏览和下载。首次使用自动检测，成功后缓存 24 小时；网络切换或连接失败后重新检测。");
+        heading(network, "数据连接", "自动直连用于公开下载、私人文件浏览和下载。在 Google 官方地址范围内检测，成功后缓存 24 小时；网络切换或连接失败后重新检测。");
         networkMode = new Spinner(this);
         ArrayAdapter<String> modes = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item,
-            new String[]{"自动直连（无需手工找 IP）", "系统网络（使用设备网络设置）"});
+            new String[]{"Google 前端直连（自动检测）", "系统网络（使用设备网络设置）"});
         modes.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         networkMode.setAdapter(modes);
         networkMode.setMinimumHeight(dp(48));
@@ -193,7 +193,7 @@ public final class MainActivity extends AppCompatActivity {
         network.addView(advanced, new LinearLayout.LayoutParams(-1,-2));
         LinearLayout manual = vertical();manualPanel=manual;
         manual.setVisibility(View.GONE);
-        TextView manualLabel = text("公开下载 IPv4（可选）", 14, INK, false);
+        TextView manualLabel = text("Google 前端 IPv4（可选）", 14, INK, false);
         manual.addView(manualLabel);
         ipInput = new EditText(this);
         ipInput.setId(View.generateViewId());
@@ -207,7 +207,7 @@ public final class MainActivity extends AppCompatActivity {
         ipInput.setPadding(dp(13), dp(14), dp(13), dp(14));
         manualLabel.setLabelFor(ipInput.getId());
         manual.addView(ipInput, new LinearLayout.LayoutParams(-1,-2));
-        manual.addView(text("仅覆盖本次公开下载；仍校验真实 Google 域名的证书。私人文件由自动直连或系统网络处理。",13,MUTED,false));
+        manual.addView(text("仅覆盖本次公开下载；地址须属于 Google 官方前端范围，并校验真实域名证书。私人文件由自动直连或系统网络处理。",13,MUTED,false));
         network.addView(manual);
         advanced.setOnClickListener(v -> {
             boolean visible = manual.getVisibility() != View.VISIBLE;

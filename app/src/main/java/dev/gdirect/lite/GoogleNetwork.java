@@ -27,8 +27,10 @@ public final class GoogleNetwork extends Application {
     private static GoogleNetwork instance;
     private SharedPreferences preferences;
     private DirectRoutes routes;
+    private GoogleRangeCatalog catalog;
+    private volatile GoogleAddressSpace addressSpace;
     private final OkHttpClient base = new OkHttpClient.Builder()
-        .followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false).build();
+        .followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false).addNetworkInterceptor(GoogleCertificatePolicy.CHECK).build();
     private final GoogleDnsDiscovery encryptedDns = new GoogleDnsDiscovery(base);
     private final GoogleHttp.DirectClients directClients = new GoogleHttp.DirectClients(base);
     private volatile String summary = "自动直连：浏览或下载时自动检测，无需手工填写 IP";
@@ -38,11 +40,30 @@ public final class GoogleNetwork extends Application {
         java.io.File[] abandonedPreviews=getCacheDir().listFiles((dir,name)->name.startsWith("drive-preview-"));
         if(abandonedPreviews!=null)for(java.io.File file:abandonedPreviews)file.delete();
         preferences = getSharedPreferences("direct-network", MODE_PRIVATE);
+        // Discard historical routes discovered before the relay's ownership was corrected.
+        if(preferences.getInt("routing-policy-version",0)<1) {
+            SharedPreferences.Editor migration=preferences.edit();
+            for(String key:preferences.getAll().keySet())if(key.startsWith("route:"))migration.remove(key);
+            migration.remove("known-ip-hints").putInt("routing-policy-version",1).apply();
+        }
+        android.util.AtomicFile rangeFile=new android.util.AtomicFile(new java.io.File(getFilesDir(),"google-ipranges.json"));
+        catalog=new GoogleRangeCatalog(new GoogleRangeCatalog.Store(){
+            public String read()throws IOException {
+                try(java.io.InputStream in=rangeFile.openRead();java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream()) {
+                    byte[] buffer=new byte[4096];int n;while((n=in.read(buffer))!=-1){if(bytes.size()+n>3*1024*1024)throw new IOException("地址缓存过大");bytes.write(buffer,0,n);}return bytes.toString("UTF-8");
+                }
+            }
+            public void write(String value)throws IOException {
+                java.io.FileOutputStream out=null;
+                try{out=rangeFile.startWrite();out.write(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));rangeFile.finishWrite(out);}
+                catch(IOException failure){if(out!=null)rangeFile.failWrite(out);throw failure;}
+            }
+        },name->GoogleRangeCatalog.download(base,name));
         routes = new DirectRoutes(this::candidates, this::probe, new DirectRoutes.Store() {
             @Override public DirectRoutes.Route load(String host) {
                 String[] fields = preferences.getString("route:" + host, "").split("\\|", -1);
                 try {
-                    if (fields.length == 3) return new DirectRoutes.Route(host, fields[0],
+                    if (fields.length == 3 && addressSpace!=null && addressSpace.contains(fields[0])) return new DirectRoutes.Route(host, fields[0],
                         DirectRoutes.TlsMode.valueOf(fields[1]), Long.parseLong(fields[2]));
                 } catch (IllegalArgumentException ignored) { }
                 return null;
@@ -56,7 +77,7 @@ public final class GoogleNetwork extends Application {
                 LinkedHashSet<String> hints = new LinkedHashSet<>();
                 hints.add(route.ip);
                 for (String value : preferences.getString("known-ip-hints", "").split(",")) {
-                    if (DirectRoutes.publicIpv4(value) && hints.size() < 16) hints.add(value);
+                    if (DirectRoutes.automaticAddress(value) && hints.size() < 16) hints.add(value);
                 }
                 editor.putString("known-ip-hints",String.join(",",hints));
                 editor.putString("route:" + host, route.ip + "|" + route.tls + "|" + route.checkedAt).apply();
@@ -88,22 +109,27 @@ public final class GoogleNetwork extends Application {
         preferences.edit().putBoolean("system-network",enabled).apply();
         summary = enabled ? "系统网络" : "自动直连：浏览或下载时自动检测";
     }
-    void reset() { routes.reset(); directClients.clear(); }
+    void reset() { routes.reset(); directClients.clear(); if(catalog!=null)catalog.retryRefresh(); }
+
+    private GoogleAddressSpace officialSpace()throws IOException {
+        summary="正在核对 Google 官方地址范围…";
+        try{return catalog.load();}catch(IOException error){summary=error.getMessage();throw error;}
+    }
 
     private List<String> candidates(String host) throws IOException {
-        // This hint already existed in our Java prototype. It is untrusted and must pass real-host TLS.
         LinkedHashSet<String> result = new LinkedHashSet<>();
-        result.add("183.56.143.147");
         // Network changes discard usable routes, but retain bounded historical hints for a fresh TLS probe.
         for (String value : preferences.getString("known-ip-hints", "").split(","))
-            if (DirectRoutes.publicIpv4(value)) result.add(value);
+            if (DirectRoutes.automaticAddress(value)) result.add(value);
         // Reuse other successfully verified hosts only as candidate hints; each new host is probed separately.
         for (String key : preferences.getAll().keySet()) {
             if (key.startsWith("route:")) {
                 String value = preferences.getString(key, "").split("\\|", -1)[0];
-                if (DirectRoutes.publicIpv4(value)) result.add(value);
+                if (DirectRoutes.automaticAddress(value)) result.add(value);
             }
         }
+        GoogleAddressSpace space=addressSpace;
+        if(space==null)throw new IOException("尚未取得 Google 官方地址范围");
         summary="正在收集 " + host + " 的系统及加密 DNS 候选…";
         try (GoogleDnsDiscovery.Query encrypted = encryptedDns.start(host)) {
             // Android's asynchronous resolver supports actual cancellation; an interrupted
@@ -121,7 +147,7 @@ public final class GoogleNetwork extends Application {
                             @Override public void onAnswer(List<InetAddress> addresses,int rcode) {
                                 List<String> ips = new ArrayList<>();
                                 for (InetAddress address : addresses)
-                                    if (address.getAddress().length==4 && DirectRoutes.publicIpv4(address.getHostAddress()))
+                                    if (address.getAddress().length==4 && DirectRoutes.automaticAddress(address.getHostAddress()))
                                         ips.add(address.getHostAddress());
                                 lookup.complete(ips);
                             }
@@ -149,11 +175,20 @@ public final class GoogleNetwork extends Application {
                 for (CancellationSignal cancellation : cancellations) cancellation.cancel();
                 for (Future<List<String>> lookup : lookups) lookup.cancel(true);
             }
-            return DirectRoutes.candidates(freshDns,encrypted.addresses(),new ArrayList<>(result));
+            List<String> encryptedAnswers=encrypted.addresses();
+            freshDns.removeIf(ip->!space.contains(ip));encryptedAnswers.removeIf(ip->!space.contains(ip));result.removeIf(ip->!space.contains(ip));
+            List<String> history=new ArrayList<>(result);
+            List<String> output=DirectRoutes.candidates(freshDns,encryptedAnswers,history.subList(0,Math.min(4,history.size())));
+            summary="正在 Google 官方地址范围内检测可达前端…";
+            for(String ip:GoogleFrontendScan.reachable(space.sample(48,new java.security.SecureRandom()),space,GoogleFrontendScan::tcp))
+                if(output.size()<16&&!output.contains(ip))output.add(ip);
+            for(String ip:history)if(output.size()<16&&!output.contains(ip))output.add(ip);
+            return output;
         }
     }
 
     private void probe(DirectRoutes.Route route) throws IOException {
+        if(addressSpace==null||!addressSpace.contains(route.ip))throw new IOException("不在 Google 前端地址范围");
         OkHttpClient client = GoogleHttp.direct(base, route).newBuilder()
             .connectTimeout(2, TimeUnit.SECONDS).readTimeout(2,TimeUnit.SECONDS).callTimeout(3,TimeUnit.SECONDS).build();
         boolean api = route.host.equals("www.googleapis.com");
@@ -180,7 +215,9 @@ public final class GoogleNetwork extends Application {
                 || (url.getPort() != -1 && url.getPort() != 443) || url.getUserInfo() != null)
             throw new IOException("不允许的 Google 数据地址");
         if (manualIp != null) {
-            if (!DirectRoutes.publicIpv4(manualIp)) throw new IOException("手工地址必须是公网 IPv4，不能使用内网或 fake-IP");
+            if (!DirectRoutes.automaticAddress(manualIp)) throw new IOException("手工地址必须是公网 IPv4，不能使用内网、fake-IP 或已确认的第三方中转");
+            addressSpace=officialSpace();
+            if(!addressSpace.contains(manualIp))throw new IOException("该地址不属于当前 Google 前端范围");
             DirectRoutes.Route route = new DirectRoutes.Route(url.getHost(),manualIp,DirectRoutes.TlsMode.NORMAL,0);
             OkHttpClient manual = GoogleHttp.direct(base,route);
             return GoogleHttp.open(url, () -> manual, () -> { }, guard);
@@ -189,6 +226,7 @@ public final class GoogleNetwork extends Application {
         Set<String> failed = new java.util.HashSet<>();
         DirectRoutes.Route[] selected = new DirectRoutes.Route[1];
         return GoogleHttp.open(url, () -> {
+            addressSpace=officialSpace();
             selected[0] = routes.select(url.getHost(),failed);
             return directClients.get(selected[0]);
         }, () -> {
@@ -196,6 +234,7 @@ public final class GoogleNetwork extends Application {
         }, guard);
     }
     void checkRoutes() throws IOException {
+        addressSpace=officialSpace();
         List<String> results = new ArrayList<>();
         boolean failed = false;
         for (String host : new String[]{"www.googleapis.com","drive.usercontent.google.com"}) {

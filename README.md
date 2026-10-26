@@ -2,13 +2,15 @@
 
 受 [mizorewww/gdirect](https://github.com/mizorewww/gdirect) 的功能与使用思路启发，基于现有 Java Android 原型继续开发的 Google Drive 客户端。应用代码独立实现，没有移植该项目的源码、aria2 补丁或原生二进制；非 Google 或该项目作者的官方应用。
 
-## 当前版本：0.4.0-client-preview 开发预览
+## 当前版本：0.5.0-google-preview 开发预览
 
 当前按 [阶段验收与统一交付](docs/RELEASE_GATE.md) 完善功能；中间提交不反复发安装包或要求 Google 配置。预览身份和证书固定，普通更新无需重新注册客户端。
 
 Android 10（API 29）及以上，无需 Root。
 
-- **自动直连**：首次使用并行收集系统及 Google 加密 DNS 候选并检测服务 IP，标准 TLS / 无 SNI 均严格校验证书；按域名缓存 24 小时，失败后换线。公开下载、私人浏览和私人下载共用数据通道，无需手工找 IP。详见 [直连说明及验证边界](docs/DIRECT_NETWORK.md)。
+0.5.0 已移除 0.4.0 中的 183.56.143.147 候选：维护者提供的勘误确认它是第三方中转。新版本默认约束到 Google 公布的前端范围，缺少官方列表时不会以任意 IP 替代。测试版包名/证书保持不变。
+
+- **自动直连**：读取 Google 官方 goog.json/cloud.json 计算非 Cloud IPv4 范围，过滤系统/加密 DNS 与历史候选，并做有界 TCP 前端预检；首次使用须取得官方列表，之后缓存每周更新。标准 TLS / 无 SNI 均严格校验证书，并额外排除 emSign/eMudhra 证书链；按域名缓存 24 小时，失败后换线。公开下载、私人浏览和私人下载共用数据通道，无需手工找 IP。详见 [直连说明及验证边界](docs/DIRECT_NETWORK.md)。
 - **公开链接下载**：保留原型的链接解析、前台下载和系统 Downloads 集成。公开文件无需登录。
 - **安全续传**：仅在服务器提供强 ETag 时进行分块/续传，使用 `If-Range` 并核对 Content-Range 和文件版本；没有可靠版本标识时改用单流，避免把不同版本拼接起来。
 - **Google 授权**：通过 Google 官方 Android `AuthorizationClient` 默认请求只读权限。文件管理功能在用户明确选择后另行请求 Drive 管理权限；只读连接不会因 SDK 缓存了更宽权限就自动开启写入。令牌只在进程内存中使用，不保存刷新令牌。

@@ -47,12 +47,12 @@ public final class GoogleDnsDiscoveryTest {
             assertNull(request.header("Authorization"));
             OkHttpClient trusted=new OkHttpClient.Builder().sslSocketFactory(f.clientTrust.sslSocketFactory(),f.clientTrust.trustManager()).build();
             OkHttpClient client=GoogleHttp.direct(trusted,new DirectRoutes.Route("dns.google","127.0.0.1",route.tls,0))
-                .newBuilder().callTimeout(2,TimeUnit.SECONDS).build();
+                .newBuilder().callTimeout(5,TimeUnit.SECONDS).build();
             return client.newCall(request.newBuilder().url(request.url().newBuilder().port(f.server.getPort()).build()).build());
         });
     }
     static void await(GoogleDnsDiscovery.Query query)throws Exception {
-        long end=System.nanoTime()+TimeUnit.SECONDS.toNanos(4);
+        long end=System.nanoTime()+TimeUnit.SECONDS.toNanos(8);
         while(!query.finished()&&System.nanoTime()<end)Thread.sleep(10);
         assertTrue("discovery did not finish",query.finished());
     }

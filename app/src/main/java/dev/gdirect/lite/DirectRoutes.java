@@ -72,14 +72,20 @@ final class DirectRoutes {
             && !(n[0] == 203 && n[1] == 0 && n[2] == 113);
     }
 
+    // Identified by the service author's correction as a third-party reverse proxy.
+    // A public address and a valid certificate alone do not establish Google ownership.
+    static boolean automaticAddress(String ip) {
+        return publicIpv4(ip) && !"183.56.143.147".equals(ip);
+    }
+
     static List<String> candidates(List<String> freshDns, List<String> history) {
         LinkedHashSet<String> ordered = new LinkedHashSet<>();
         for (String value : freshDns) {
-            if (publicIpv4(value)) ordered.add(value);
+            if (automaticAddress(value)) ordered.add(value);
             if (ordered.size() >= 8) break;
         }
         for (String value : history) {
-            if (publicIpv4(value)) ordered.add(value);
+            if (automaticAddress(value)) ordered.add(value);
             if (ordered.size() >= 16) break;
         }
         return new ArrayList<>(ordered);
@@ -89,8 +95,8 @@ final class DirectRoutes {
         LinkedHashSet<String> fresh=new LinkedHashSet<>();
         // Neither a poisoned system answer set nor one resolver may consume all slots.
         for(int i=0;i<Math.max(system.size(),encrypted.size())&&fresh.size()<8;i++) {
-            if(i<encrypted.size()&&publicIpv4(encrypted.get(i)))fresh.add(encrypted.get(i));
-            if(i<system.size()&&fresh.size()<8&&publicIpv4(system.get(i)))fresh.add(system.get(i));
+            if(i<encrypted.size()&&automaticAddress(encrypted.get(i)))fresh.add(encrypted.get(i));
+            if(i<system.size()&&fresh.size()<8&&automaticAddress(system.get(i)))fresh.add(system.get(i));
         }
         return candidates(new ArrayList<>(fresh),history);
     }
@@ -103,7 +109,10 @@ final class DirectRoutes {
             long epoch = generation;
             long now = System.currentTimeMillis();
             Route cached = store.load(host);
-            if (cached != null && cached.host.equals(host) && publicIpv4(cached.ip)
+            if(cached!=null&&!automaticAddress(cached.ip)) {
+                synchronized(cacheLock){store.remove(host);}cached=null;
+            }
+            if (cached != null && cached.host.equals(host) && automaticAddress(cached.ip)
                     && cached.checkedAt <= now && now - cached.checkedAt < MAX_AGE
                     && !failed.contains(cached.key()) && !recentlyRejected(cached)) {
                 if (generation != epoch) throw new IOException("网络已切换，请重新检测直连线路");
@@ -117,9 +126,9 @@ final class DirectRoutes {
             long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(budgetMillis);
             observer.update("正在自动收集 " + host + " 的候选线路…");
             LinkedHashSet<String> ips = new LinkedHashSet<>();
-            if (cached != null && publicIpv4(cached.ip)) ips.add(cached.ip);
+            if (cached != null && automaticAddress(cached.ip)) ips.add(cached.ip);
             for (String ip : candidates.get(host)) {
-                if (publicIpv4(ip)) ips.add(ip);
+                if (automaticAddress(ip)) ips.add(ip);
                 if (ips.size() >= 16) break;
             }
             List<Route> attempts = new ArrayList<>();
