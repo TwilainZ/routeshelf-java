@@ -12,7 +12,8 @@ final class GoogleRangeCatalog {
     interface Store {String read()throws IOException;void write(String value)throws IOException;}
     interface Fetch {String get(String name)throws IOException;}
     private final Store store;private final Fetch fetch;
-    private GoogleAddressSpace current;private long checked,lastRefreshFailure;private boolean deferred;
+    private GoogleAddressSpace current;private long checked,lastRefreshFailure,deferredEpoch=-1;
+    private final java.util.concurrent.atomic.AtomicLong resetEpoch=new java.util.concurrent.atomic.AtomicLong();
     GoogleRangeCatalog(Store store,Fetch fetch){this.store=store;this.fetch=fetch;}
     synchronized GoogleAddressSpace load()throws IOException {
         long now=System.currentTimeMillis();
@@ -21,7 +22,8 @@ final class GoogleRangeCatalog {
             catch(Exception ignored){current=null;}
         }
         if(current!=null&&checked<=now&&now-checked<TimeUnit.DAYS.toMillis(7))return current;
-        if(current!=null&&checked<=now&&now-checked<TimeUnit.DAYS.toMillis(30)&&deferred&&System.nanoTime()-lastRefreshFailure<TimeUnit.HOURS.toNanos(1))return current;
+        if(current!=null&&checked<=now&&now-checked<TimeUnit.DAYS.toMillis(30)&&deferredEpoch==resetEpoch.get()&&System.nanoTime()-lastRefreshFailure<TimeUnit.HOURS.toNanos(1))return current;
+        long updateEpoch=resetEpoch.get();
         try {
             if(Thread.currentThread().isInterrupted())throw new java.io.InterruptedIOException("地址更新已取消");
             String google=fetch.get("goog.json");
@@ -32,14 +34,14 @@ final class GoogleRangeCatalog {
                 throw new IOException("Google 地址列表明显不完整");
             GoogleAddressSpace updated=GoogleAddressSpace.parse(google,cloud);
             String encoded=new JSONObject().put("google",google).put("cloud",cloud).put("checked",now).toString();
-            store.write(encoded);current=updated;checked=now;deferred=false;return current;
+            store.write(encoded);current=updated;checked=now;deferredEpoch=-1;return current;
         }catch(Exception error) {
             if(Thread.currentThread().isInterrupted())throw new java.io.InterruptedIOException("地址更新已取消");
-            if(current!=null&&checked<=now&&now-checked<TimeUnit.DAYS.toMillis(30)){lastRefreshFailure=System.nanoTime();deferred=true;return current;}
+            if(current!=null&&checked<=now&&now-checked<TimeUnit.DAYS.toMillis(30)){lastRefreshFailure=System.nanoTime();deferredEpoch=updateEpoch;return current;}
             throw new IOException("无法取得 Google 官方地址范围，请稍后重新检测或选择系统网络",error);
         }
     }
-    synchronized void retryRefresh(){deferred=false;}
+    void retryRefresh(){resetEpoch.incrementAndGet();}
     static String download(OkHttpClient trusted,String name)throws IOException {
         if(!name.equals("goog.json")&&!name.equals("cloud.json"))throw new IOException("Invalid Google range filename");
         OkHttpClient client=trusted.newBuilder().followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false)

@@ -27,6 +27,22 @@ public final class GoogleRangeCatalogTest {
         GoogleRangeCatalog expired=new GoogleRangeCatalog(memory,name->{throw new IOException("offline");});assertThrows(IOException.class,expired::load);
     }
 
+    @Test public void resettingFromTheUiDoesNotWaitForAnInFlightMetadataDownload()throws Exception {
+        java.util.concurrent.CountDownLatch started=new java.util.concurrent.CountDownLatch(1),release=new java.util.concurrent.CountDownLatch(1),resetDone=new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.ExecutorService workers=java.util.concurrent.Executors.newFixedThreadPool(2);
+        GoogleRangeCatalog catalog=new GoogleRangeCatalog(new Memory(),name->{
+            if(name.equals("goog.json")){started.countDown();try{if(!release.await(3,java.util.concurrent.TimeUnit.SECONDS))throw new IOException("fixture timeout");}catch(InterruptedException e){throw new IOException(e);}}
+            return name.equals("goog.json")?complete(0,64):complete(0,32);
+        });
+        try {
+            java.util.concurrent.Future<?> loading=workers.submit(()->{try{catalog.load();}catch(IOException e){throw new RuntimeException(e);}});
+            assertTrue(started.await(1,java.util.concurrent.TimeUnit.SECONDS));
+            workers.submit(()->{catalog.retryRefresh();resetDone.countDown();});
+            assertTrue("UI reset waited for network I/O",resetDone.await(1,java.util.concurrent.TimeUnit.SECONDS));
+            release.countDown();loading.get(2,java.util.concurrent.TimeUnit.SECONDS);
+        }finally{release.countDown();workers.shutdownNow();}
+    }
+
     @Test public void failedOrTinyColdCatalogDoesNotOpenTheNetworkToArbitraryAddresses()throws Exception {
         Memory memory=new Memory();GoogleRangeCatalog catalog=new GoogleRangeCatalog(memory,name->GoogleAddressSpaceTest.json("8.8.8.0/24"));
         assertThrows(IOException.class,catalog::load);assertEquals("",memory.saved);
