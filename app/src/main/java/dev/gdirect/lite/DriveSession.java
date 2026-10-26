@@ -7,13 +7,32 @@ import java.util.concurrent.TimeUnit;
 final class DriveSession {
     static final DriveSession INSTANCE = new DriveSession();
     private String token;
-    private long generation;
+    // Pending file-picker/preview intents from a dead process must not match a new account session.
+    private long generation=new java.security.SecureRandom().nextLong()&0x3fffffffffffffffL;
     private long expiresAt;
+    private boolean writable;
+    private java.util.Set<String> grants=java.util.Collections.emptySet();
+    private final java.util.Map<String,String> resourceKeys=new java.util.LinkedHashMap<>(16,0.75f,true);
 
     synchronized void connect(String accessToken) {
+        connect(accessToken,false);
+    }
+    synchronized void connect(String accessToken,boolean writable) {
+        connect(accessToken,java.util.Collections.singleton(writable?DriveApi.MANAGE_SCOPE:DriveApi.READONLY_SCOPE));
+    }
+    synchronized void connect(String accessToken,java.util.Set<String> scopes) {
+        connect(accessToken,scopes,true);
+    }
+    synchronized void connect(String accessToken,java.util.Set<String> scopes,boolean allowWrite) {
         if (accessToken == null || !accessToken.matches("[A-Za-z0-9._~+/-]+=*"))
             throw new IllegalArgumentException("Google 未返回有效访问令牌");
-        token = accessToken;
+        if(scopes==null)throw new IllegalArgumentException("Google 未返回有效权限范围");
+        java.util.Set<String> accepted=new java.util.HashSet<>();
+        if(scopes.contains(DriveApi.READONLY_SCOPE))accepted.add(DriveApi.READONLY_SCOPE);
+        if(scopes.contains(DriveApi.MANAGE_SCOPE))accepted.add(DriveApi.MANAGE_SCOPE);
+        if(accepted.isEmpty())throw new IllegalArgumentException("未获得 Google Drive 权限");
+        token=accessToken;resourceKeys.clear();
+        grants=java.util.Collections.unmodifiableSet(accepted);this.writable=allowWrite&&accepted.contains(DriveApi.MANAGE_SCOPE);
         generation++;
         // Conservative local lifetime; the authorization SDK obtains a fresh token on reconnection.
         expiresAt = System.nanoTime() + TimeUnit.MINUTES.toNanos(50);
@@ -31,7 +50,9 @@ final class DriveSession {
         return token != null && System.nanoTime() - expiresAt < 0;
     }
 
-    synchronized void disconnect() { token = null; generation++; }
+    synchronized void disconnect() { token = null; writable=false;grants=java.util.Collections.emptySet();resourceKeys.clear();generation++; }
+    synchronized boolean writable() { return connected() && writable; }
+    synchronized java.util.Set<String> scopes(){return connected()?grants:java.util.Collections.emptySet();}
 
     synchronized void invalidate(Lease lease) {
         if (lease.owner == this && lease.generation == generation) disconnect();
@@ -53,5 +74,18 @@ final class DriveSession {
             }
         }
         void requireCurrent() throws AuthorizationRequired { token(); }
+        void requireWrite() throws IOException {
+            synchronized(owner) { requireCurrent(); if(!owner.writable) throw new IOException("请先启用文件管理授权"); }
+        }
+        void rememberKey(String id,String key)throws IOException {
+            DriveApi.requireId(id);
+            if(key==null||key.isEmpty())return;
+            if(!key.matches("[A-Za-z0-9_-]{1,200}"))throw new IOException("资源密钥格式无效");
+            synchronized(owner){requireCurrent();if(owner.resourceKeys.size()>=64&&!owner.resourceKeys.containsKey(id))owner.resourceKeys.remove(owner.resourceKeys.keySet().iterator().next());owner.resourceKeys.put(id,key);}
+        }
+        String resourceHeader(String id)throws IOException {
+            if(id==null)return null;DriveApi.requireId(id);
+            synchronized(owner){requireCurrent();String key=owner.resourceKeys.get(id);return key==null?null:id+"/"+key;}
+        }
     }
 }

@@ -71,8 +71,17 @@ final class DirectNet {
         if (id == null && url.getHost().equalsIgnoreCase("drive.usercontent.google.com")
                 && url.getPath().contains("download")) return url;
         if (id == null) throw new IOException("无法识别文件 ID；目前不支持文件夹及 Google 文档链接");
+        String resource=null;
+        if(url.getQuery()!=null)for(String part:url.getQuery().split("&")) {
+            int separator=part.indexOf('=');
+            if(separator>0&&URLDecoder.decode(part.substring(0,separator),"UTF-8").equalsIgnoreCase("resourcekey")) {
+                String value=URLDecoder.decode(part.substring(separator+1),"UTF-8");
+                if(!value.matches("[A-Za-z0-9_-]{1,200}")||(resource!=null&&!resource.equals(value)))throw new IOException("共享资源密钥无效或重复");
+                resource=value;
+            }
+        }
         return new URL("https://drive.usercontent.google.com/download?id=" + id
-            + "&export=download&confirm=t");
+            + "&export=download&confirm=t"+(resource==null?"":"&resourcekey="+resource));
     }
 
     static HttpsURLConnection open(URL url, String ip, String range) throws IOException {
@@ -80,12 +89,15 @@ final class DirectNet {
     }
 
     static HttpsURLConnection open(URL url, String ip, String range, String validator) throws IOException {
+        return open(url,ip,range,validator,connections);
+    }
+    static HttpsURLConnection open(URL url,String ip,String range,String validator,Connections factory)throws IOException {
         for (int redirects = 0; redirects < 8; redirects++) {
             if (!"https".equalsIgnoreCase(url.getProtocol()) || !googleHost(url.getHost())
                     || (url.getPort() != -1 && url.getPort() != 443) || url.getUserInfo() != null) {
                 throw new IOException("服务器跳转到了不允许的地址，已停止下载");
             }
-            HttpsURLConnection connection = connections.open(url, ip);
+            HttpsURLConnection connection = factory.open(url, ip);
             connection.setInstanceFollowRedirects(false);
             connection.setConnectTimeout(9000);
             connection.setReadTimeout(20000);
@@ -110,9 +122,12 @@ final class DirectNet {
     }
 
     static Probe probe(URL start, String ip) throws IOException {
+        return probe(start,ip,connections);
+    }
+    static Probe probe(URL start,String ip,Connections factory)throws IOException {
         URL url = start;
         for (int attempt = 0; attempt < 3; attempt++) {
-            HttpsURLConnection connection = open(url, ip, "bytes=0-0");
+            HttpsURLConnection connection = open(url, ip, "bytes=0-0",null,factory);
             try {
                 int code = connection.getResponseCode();
                 if (code != 200 && code != 206) {

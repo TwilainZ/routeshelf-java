@@ -16,6 +16,10 @@ public final class DirectNetChecks {
         expect(DirectNet.normalizeSharedLink("https://drive.google.com/open?id=" + id)
             .toString().contains("id=" + id), "open?id URL");
         expect("8.8.8.8".equals(DirectNet.parseIp(" 8.8.8.8 ")), "IPv4");
+        expect(DirectNet.normalizeSharedLink("https://drive.google.com/file/d/"+id+"/view?resourcekey=0-test_123").toString().contains("resourcekey=0-test_123"),"shared-link resource key must survive normalization");
+        boolean badResource=false;
+        try{DirectNet.normalizeSharedLink("https://drive.google.com/file/d/"+id+"/view?resourcekey=x&resourcekey=y");}catch(Exception e){badResource=true;}
+        expect(badResource,"ambiguous resource keys must fail");
         expect(DirectNet.parseIp("") == null, "empty IP");
         boolean badIp = false;
         try { DirectNet.parseIp("999.1.1.1"); } catch (IllegalArgumentException ex) { badIp = true; }

@@ -11,15 +11,30 @@ import javax.net.ssl.HttpsURLConnection;
 import org.junit.Test;
 
 public final class DriveTransportTest {
+    @Test public void authenticatedRangeKeepsCredentialsOnTheApiAndRejectsWeakValidators()throws Exception {
+        DriveSession session=new DriveSession();session.connect("fixture");URL url=new URL("https://www.googleapis.com/drive/v3/files/file?alt=media");
+        AtomicInteger calls=new AtomicInteger();Fake c=new Fake(url,206);
+        DriveTransport transport=new DriveTransport(session.lease(),target->{calls.incrementAndGet();return c;},()->{});
+        assertSame(c,transport.openRange(url,"bytes=0-1023","\"version\""));
+        assertEquals("Bearer fixture",c.getRequestProperty("Authorization"));assertEquals("bytes=0-1023",c.getRequestProperty("Range"));assertEquals("\"version\"",c.getRequestProperty("If-Range"));
+        assertThrows(IOException.class,()->transport.openRange(url,"bytes=0-1","W/\"weak\""));
+        assertThrows(IOException.class,()->transport.openRange(new URL("https://evil.example/file"),"bytes=0-1",null));
+        assertEquals(1,calls.get());
+    }
     static final class Fake extends HttpsURLConnection {
         final int code;
         boolean closed;
         byte[] body = "{\"files\":[]}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
         String retryAfter;
+        String uploadLocation,uploadRange;
+        String etag;
+        final java.io.ByteArrayOutputStream written=new java.io.ByteArrayOutputStream();
         Fake(URL url, int code) { super(url); this.code = code; }
         @Override public int getResponseCode() { return code; }
+        @Override public void setRequestMethod(String value) { method=value; }
+        @Override public java.io.OutputStream getOutputStream(){return written;}
         @Override public InputStream getInputStream() { return new ByteArrayInputStream(body); }
-        @Override public String getHeaderField(String name) { return "Retry-After".equals(name) ? retryAfter : ("Location".equals(name) ? "https://example.net/steal" : null); }
+        @Override public String getHeaderField(String name) { return "ETag".equals(name)?etag:("Retry-After".equals(name) ? retryAfter : ("Range".equals(name)?uploadRange:("Location".equals(name)?(uploadLocation==null?"https://example.net/steal":uploadLocation):null))); }
         @Override public void disconnect() { closed = true; }
         @Override public boolean usingProxy() { return false; }
         @Override public void connect() { }
@@ -90,5 +105,39 @@ public final class DriveTransportTest {
             assertEquals("Bearer unit-test-token",c.getRequestProperty("Authorization"));
             assertFalse(c.getInstanceFollowRedirects()); assertTrue(c.closed);
         }
+    }
+
+    @Test public void writesRequireExplicitGrantAndAreNotRetriedOnUncertainFailure() throws Exception {
+        DriveSession session=new DriveSession();session.connect("fixture");AtomicInteger calls=new AtomicInteger();
+        URL url=new URL("https://www.googleapis.com/drive/v3/files/file");
+        Fake c=new Fake(url,503);
+        DriveTransport readonly=new DriveTransport(session.lease(),target->{calls.incrementAndGet();return c;},()->{});
+        assertThrows(IOException.class,()->readonly.mutate(url,"PATCH","{}"));assertEquals(0,calls.get());
+        session.connect("fixture-write",true);
+        DriveTransport write=new DriveTransport(session.lease(),target->{calls.incrementAndGet();return c;},()->{});
+        assertThrows(IOException.class,()->write.mutate(url,"PATCH","{\"name\":\"new\"}"));
+        assertEquals(1,calls.get());assertEquals("PATCH",c.getRequestMethod());assertFalse(c.getInstanceFollowRedirects());assertTrue(c.closed);
+        assertEquals("{\"name\":\"new\"}",c.written.toString("UTF-8"));
+    }
+    @Test public void uploadLocationMustStayOnGoogleAndCommittedRangeIsParsed()throws Exception {
+        DriveSession session=new DriveSession();session.connect("fixture",true);
+        URL url=new URL("https://www.googleapis.com/upload/drive/v3/files?upload_id=fixture");
+        DriveTransport.requireUploadSession(new URL("https://www.googleapis.com/resumable/upload/drive/v3/files?upload_id=fixture"));
+        Fake init=new Fake(url,200);DriveTransport rejected=new DriveTransport(session.lease(),u->init,()->{});
+        assertThrows(IOException.class,()->rejected.startUpload("{}","text/plain",3));assertTrue(init.closed);
+        Fake chunk=new Fake(url,308);chunk.uploadRange="bytes=0-2";
+        DriveTransport transport=new DriveTransport(session.lease(),u->chunk,()->{});
+        assertEquals(3,transport.uploadChunk(url,"text/plain",0,new byte[]{1,2,3},3).committed);
+        assertEquals("bytes 0-2/3",chunk.getRequestProperty("Content-Range"));assertFalse(chunk.getInstanceFollowRedirects());
+        for(String bad:new String[]{"https://evil.example/upload/drive/v3/files?upload_id=x","https://www.googleapis.com/drive/v3/files?upload_id=x","https://www.googleapis.com/upload/drive/v3/files"})
+            assertThrows(IOException.class,()->DriveTransport.requireUploadSession(new URL(bad)));
+    }
+    @Test public void successfulMetadataWriteIsBoundedAndRedirectsCannotReceiveCredentials() throws Exception {
+        DriveSession session=new DriveSession();session.connect("fixture",true);
+        URL url=new URL("https://www.googleapis.com/drive/v3/files/file");
+        Fake c=new Fake(url,200);DriveTransport transport=new DriveTransport(session.lease(),ignored->c,()->{});
+        assertEquals("{\"files\":[]}",transport.mutate(url,"PATCH","{}"));
+        assertThrows(IOException.class,()->transport.mutate(new URL("https://example.net/drive/v3/files/file"),"PATCH","{}"));
+        assertThrows(IOException.class,()->transport.mutate(url,"PATCH","x".repeat(1024*1024+1)));
     }
 }

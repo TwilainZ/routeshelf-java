@@ -30,8 +30,8 @@ def command(*parts):
 badging = command(args.aapt2, 'dump', 'badging', str(args.apk))
 package = re.search(r"package: name='([^']+)' versionCode='([^']+)' versionName='([^']+)'", badging)
 expected_package = 'dev.gdirect.lite.probe' if args.probe else ('dev.gdirect.lite.preview' if args.preview else 'dev.gdirect.lite')
-expected_version = '0.2.1-diagnostic-probe' if args.probe else '0.3.0-direct-preview'
-expected_code = '3' if args.probe else '4'
+expected_version = '0.2.1-diagnostic-probe' if args.probe else '0.4.0-client-preview'
+expected_code = '3' if args.probe else '5'
 if not package or package.groups() != (expected_package, expected_code, expected_version):
     raise SystemExit('APK package or diagnostic version does not match the expected build')
 if args.probe and re.search(r"uses-permission(?:-sdk-\d+)?: name='android.permission.INTERNET'", badging):
@@ -56,7 +56,8 @@ with zipfile.ZipFile(args.apk) as apk:
     else:
         required_code.extend(('Ldev/gdirect/lite/AuthorizationCallback;', 'Ldev/gdirect/lite/AppDiagnostics;',
                               'Ldev/gdirect/lite/GoogleNetwork;', 'Ldev/gdirect/lite/DirectRoutes;',
-                              'Ldev/gdirect/lite/GoogleHttp;'))
+                              'Ldev/gdirect/lite/GoogleHttp;', 'Ldev/gdirect/lite/UploadTransfer;',
+                              'Ldev/gdirect/lite/FilePreviewActivity;'))
     for value in required_code:
         if not any(value.encode('ascii') in part for part in dex):
             raise SystemExit('Expected diagnostic code/revision not present in APK: ' + value)

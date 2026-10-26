@@ -51,10 +51,22 @@ public final class DownloadService extends Service {
     static final String EXTRA_THREADS = "threads";
     static final String EXTRA_DRIVE_ID = "drive_id";
     static final String EXTRA_DRIVE_SESSION = "drive_session";
+    static final String EXTRA_UPLOAD_URI="upload_uri",EXTRA_UPLOAD_PARENT="upload_parent";
     private static final String CHANNEL = "gdirect_downloads";
     private static final int NOTIFY_ID = 1407;
     private static final long CHUNK = 4L * 1024L * 1024L;
     private final AtomicBoolean cancelled = new AtomicBoolean(false);
+    private static final AtomicBoolean transferGate=new AtomicBoolean(false);
+    private final java.util.Set<HttpsURLConnection> activeConnections=java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private void track(HttpsURLConnection connection) {
+        activeConnections.add(connection);
+        if(connection instanceof GoogleHttp.GetConnection)((GoogleHttp.GetConnection)connection).onClose(()->activeConnections.remove(connection));
+        if(cancelled.get())connection.disconnect();
+    }
+    private HttpsURLConnection publicConnection(URL url,String ip)throws IOException {
+        HttpsURLConnection c=GoogleNetwork.get().open(url,ip);track(c);return c;
+    }
+    private void cancelConnections(){for(HttpsURLConnection c:activeConnections)c.disconnect();}
     private final AtomicLong bytes = new AtomicLong(0);
     private volatile Thread thread;
     private volatile long lastNotification;
@@ -75,18 +87,21 @@ public final class DownloadService extends Service {
     @Override public IBinder onBind(Intent intent) { return null; }
     @Override public void onCreate() {
         super.onCreate();
-        NotificationChannel channel = new NotificationChannel(CHANNEL, "GDirect Lite 下载", NotificationManager.IMPORTANCE_LOW);
+        NotificationChannel channel = new NotificationChannel(CHANNEL, "GDirect Lite 文件传输", NotificationManager.IMPORTANCE_LOW);
         channel.setDescription("显示文件传输进度");
         getSystemService(NotificationManager.class).createNotificationChannel(channel);
         // No private transfer survives process death. Remove abandoned private temporary content.
-        File[] abandoned = getCacheDir().listFiles((dir, name) -> name.startsWith("drive-private-"));
-        if (abandoned != null) for (File file : abandoned) file.delete();
+        File[] abandoned = getCacheDir().listFiles((dir, name) -> name.startsWith("drive-private-")||name.startsWith("drive-upload-"));
+        if (!transferGate.get()&&abandoned != null) for (File file : abandoned) file.delete();
+        File[] uploads=new File(getFilesDir(),"uploads").listFiles();
+        if(!transferGate.get()&&uploads!=null)for(File file:uploads)if(file.getName().startsWith("drive-upload-"))file.delete();
     }
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent == null) return START_NOT_STICKY;
         if (ACTION_STOP.equals(intent.getAction())) {
             if (thread == null || !thread.isAlive()) { stopSelf(startId); return START_NOT_STICKY; }
             cancelled.set(true);
+            cancelConnections();
             thread.interrupt();
             status("正在取消…", snapshot.total);
             return START_NOT_STICKY;
@@ -96,29 +111,36 @@ public final class DownloadService extends Service {
             status("已有下载在进行，请先等待或取消。", snapshot.total);
             return START_NOT_STICKY;
         }
+        if(!transferGate.compareAndSet(false,true)){stopSelf(startId);return START_NOT_STICKY;}
         String link = intent.getStringExtra(EXTRA_URL);
         String manualIp = intent.getStringExtra(EXTRA_IP);
         int workers = Math.max(1, Math.min(8, intent.getIntExtra(EXTRA_THREADS, 4)));
         String driveId = intent.getStringExtra(EXTRA_DRIVE_ID);
+        String uploadUri=intent.getStringExtra(EXTRA_UPLOAD_URI),uploadParent=intent.getStringExtra(EXTRA_UPLOAD_PARENT);
         long driveSession = intent.getLongExtra(EXTRA_DRIVE_SESSION, -1);
         cancelled.set(false);
         bytes.set(0);
         startedAt = SystemClock.elapsedRealtime();
-        snapshot = new Snapshot("准备下载…", 0, -1, 0, true, false, null, null);
+        snapshot = new Snapshot(uploadUri!=null?"准备上传…":"准备下载…", 0, -1, 0, true, false, null, null);
         Notification n = notification();
-        if (Build.VERSION.SDK_INT >= 29) startForeground(NOTIFY_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
-        else startForeground(NOTIFY_ID, n);
+        try{startForeground(NOTIFY_ID,n,ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);}
+        catch(RuntimeException error){transferGate.set(false);snapshot=new Snapshot("无法启动文件传输，请保持应用在前台后重试。",0,-1,0,false,false,null,null);stopSelf(startId);return START_NOT_STICKY;}
         thread = new Thread(() -> {
             Snapshot outcome;
             try {
-                String mimeAndUri = driveId == null ? download(link, manualIp, workers) : downloadPrivate(driveId, driveSession);
+                if(uploadUri!=null) {
+                    String uploaded=upload(Uri.parse(uploadUri),uploadParent,driveSession);
+                    outcome=new Snapshot("上传完成："+uploaded,bytes.get(),bytes.get(),0,false,true,null,null);
+                } else {
+                String mimeAndUri = driveId == null ? download(link, manualIp, workers) : downloadPrivate(driveId, driveSession,workers);
                 String[] parts = mimeAndUri.split("\\|", 2);
                 outcome = new Snapshot("下载完成，文件已保存到 下载/GDirect Lite", bytes.get(), bytes.get(), 0,
                     false, true, parts[1], parts[0]);
+                }
             } catch (Exception ex) {
-                String canceledMessage = driveId == null ? "已取消；支持续传的已完成分块可在下次重试时使用。"
+                String canceledMessage = uploadUri!=null?"上传已停止；Google 可能已接收部分或完整内容，请刷新列表核对。应用暂存已清理。":driveId == null ? "已取消；支持续传的已完成分块可在下次重试时使用。"
                     : "已取消私人文件下载；临时内容已清理。";
-                outcome = new Snapshot((cancelled.get() ? canceledMessage : "下载失败：" + explain(ex)),
+                outcome = new Snapshot((cancelled.get() ? canceledMessage : (uploadUri!=null?"上传失败：":"下载失败：") + explain(ex)),
                     bytes.get(), snapshot.total, 0, false, false, null, null);
             }
             Snapshot result = outcome;
@@ -127,6 +149,7 @@ public final class DownloadService extends Service {
                 if (thread != completedWorker) return;
                 thread = null;
                 snapshot = result;
+                transferGate.set(false);
                 stopForeground(STOP_FOREGROUND_REMOVE);
                 stopSelf(startId);
             });
@@ -179,7 +202,7 @@ public final class DownloadService extends Service {
         String ip = DirectNet.parseIp(ipText);
         URL start = DirectNet.normalizeSharedLink(link);
         status("正在检查文件和 HTTPS 连接…", -1);
-        DirectNet.Probe probe = DirectNet.probe(start, ip);
+        DirectNet.Probe probe = DirectNet.probe(start, ip,this::publicConnection);
         requireNotCancelled();
         File folder = new File(getFilesDir(), "partial");
         if (!folder.exists() && !folder.mkdirs()) throw new IOException("无法创建缓存目录");
@@ -201,10 +224,42 @@ public final class DownloadService extends Service {
         return mime + "|" + uri;
     }
 
-    private String downloadPrivate(String id, long expectedSession) throws Exception {
+    private String upload(Uri uri,String parent,long expectedSession)throws Exception {
+        if(!"content".equals(uri.getScheme()))throw new IOException("请选择系统文件选择器提供的文件");
+        DriveApi.requireId(parent);DriveSession.Lease lease=DriveSession.INSTANCE.lease();
+        if(lease.id()!=expectedSession)throw new DriveSession.AuthorizationRequired();lease.requireWrite();
+        ReadRetry.Check check=()->{requireNotCancelled();lease.requireWrite();};
+        String name="upload.bin";
+        try(android.database.Cursor cursor=getContentResolver().query(uri,new String[]{android.provider.OpenableColumns.DISPLAY_NAME},null,null,null)) {
+            if(cursor!=null&&cursor.moveToFirst()&&!cursor.isNull(0))name=cursor.getString(0);
+        }
+        DriveApi.requireName(name);
+        String type=getContentResolver().getType(uri);
+        if(type==null||!type.matches("[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+"))type="application/octet-stream";
+        File staging=new File(getFilesDir(),"uploads");if(!staging.exists()&&!staging.mkdirs())throw new IOException("无法创建上传暂存目录");
+        File source=File.createTempFile("drive-upload-",".part",staging);
+        try {
+            MessageDigest digest=MessageDigest.getInstance("MD5");status("正在读取待上传文件…",-1);
+            try(InputStream in=getContentResolver().openInputStream(uri);FileOutputStream out=new FileOutputStream(source)) {
+                if(in==null)throw new IOException("无法读取所选文件");
+                byte[] buffer=new byte[65536];int n;
+                while((n=in.read(buffer))!=-1){check.run();out.write(buffer,0,n);digest.update(buffer,0,n);bytes.addAndGet(n);status("正在读取待上传文件…",-1);}
+                out.getFD().sync();
+            }
+            check.run();bytes.set(0);status("正在上传…",source.length());
+            DriveApi api=new DriveApi(GoogleAuthorization.transport(this,lease,this::track));
+            DriveApi.FileEntry uploaded=api.upload(source,parent,name,type,check,(done,total)->{bytes.set(done);status("正在上传…",total);});
+            check.run();
+            try{FileIntegrity.verify(source.length(),uploaded.size,digest.digest(),uploaded.md5);}
+            catch(IOException e){throw new IOException("Google 已返回上传结果，但校验未通过；请刷新列表核对，不要重复提交。",e);}
+            bytes.set(source.length());return uploaded.name;
+        } finally {source.delete();}
+    }
+
+    private String downloadPrivate(String id, long expectedSession,int workers) throws Exception {
         return ReadRetry.run(() -> {
             bytes.set(0);
-            try { return downloadPrivateOnce(id,expectedSession); }
+            try { return downloadPrivateOnce(id,expectedSession,workers); }
             catch (IOException error) { throw error; }
             catch (Exception error) { throw new IOException("私人文件处理失败",error); }
         }, () -> {
@@ -213,20 +268,35 @@ public final class DownloadService extends Service {
         });
     }
 
-    private String downloadPrivateOnce(String id, long expectedSession) throws Exception {
+    private String downloadPrivateOnce(String id, long expectedSession,int workers) throws Exception {
         DriveSession.Lease lease = DriveSession.INSTANCE.lease();
         if (lease.id() != expectedSession) throw new DriveSession.AuthorizationRequired();
-        DriveTransport transport = GoogleAuthorization.transport(this, lease);
+        DriveTransport transport = GoogleAuthorization.transport(this, lease,this::track);
         DriveApi api = new DriveApi(transport);
         status("正在读取私人文件信息…", -1);
         DriveApi.FileEntry info = api.metadata(id);
         if (!info.downloadable) throw new IOException("此文件不允许下载，或需要 Google 文档导出（暂不支持）");
         File file = File.createTempFile("drive-private-", ".part", getCacheDir());
+        File meta=new File(getCacheDir(),file.getName()+".properties");
         try {
             boolean exporting = !info.exportMime.isEmpty();
+            MessageDigest digest = MessageDigest.getInstance("MD5");
+            String etag=null;
+            if(!exporting&&workers>1&&info.size>CHUNK&&!info.md5.isEmpty()&&info.size/CHUNK<100000) {
+                HttpsURLConnection probe=transport.openRange(api.mediaUrl(id),"bytes=0-0",null);
+                try {
+                    if(probe.getResponseCode()==206&&TransferRules.rangeTotal(probe.getHeaderField("Content-Range"),0,0)==info.size)
+                        etag=TransferRules.strongEtag(probe.getHeaderField("ETag"));
+                }finally{probe.disconnect();}
+            }
+            if(etag!=null) {
+                ReadRetry.Check check=()->{requireNotCancelled();lease.requireCurrent();};
+                DirectNet.Probe probe=new DirectNet.Probe(api.mediaUrl(id),info.size,true,info.name,etag);
+                downloadChunks(file,meta,probe,"private:"+id+":"+lease.id(),workers,(url,range,version)->transport.openRange(url,range,version),check);
+                try(InputStream in=new FileInputStream(file)){byte[] buffer=new byte[65536];int n;while((n=in.read(buffer))!=-1){check.run();digest.update(buffer,0,n);}}
+            } else {
             HttpsURLConnection c = transport.open(exporting ? api.exportUrl(info) : api.mediaUrl(id));
             long exportSize = exporting ? c.getContentLengthLong() : -1;
-            MessageDigest digest = MessageDigest.getInstance("MD5");
             try (InputStream in = c.getInputStream(); FileOutputStream out = new FileOutputStream(file)) {
                 byte[] buffer = new byte[65536];
                 int n;
@@ -242,22 +312,23 @@ public final class DownloadService extends Service {
                 }
                 out.getFD().sync();
             } finally { c.disconnect(); }
+            if(exporting&&exportSize>=0&&bytes.get()!=exportSize)throw new IOException("导出内容未完整接收，请重试");
+            }
             requireNotCancelled();
             lease.requireCurrent();
             // MD5 is Drive's content checksum, not a cryptographic authentication mechanism.
             if (!exporting) FileIntegrity.verify(bytes.get(), info.size, digest.digest(), info.md5);
-            if (exporting && exportSize >= 0 && bytes.get() != exportSize) throw new IOException("导出内容未完整接收，请重试");
             status("校验完成，正在保存到系统下载目录…", info.size);
             String outputMime = exporting ? info.exportMime : info.mime;
             Uri saved = publish(file, TransferRules.safeFilename(info.name + (exporting ? info.exportSuffix : "")), outputMime, lease);
             return outputMime + "|" + saved;
-        } finally { file.delete(); }
+        } finally { file.delete();meta.delete(); }
     }
 
     private void downloadOne(File file, File meta, DirectNet.Probe probe, String ip) throws Exception {
         if (meta.exists()) meta.delete();
         bytes.set(0);
-        HttpsURLConnection c = DirectNet.open(probe.finalUrl, ip, null);
+        HttpsURLConnection c = DirectNet.open(probe.finalUrl, ip, null,null,this::publicConnection);
         try {
             if (c.getResponseCode() != 200) throw new IOException("单连接下载返回 HTTP " + c.getResponseCode());
             String contentType = c.getContentType();
@@ -280,6 +351,10 @@ public final class DownloadService extends Service {
 
     private void downloadChunks(File file, File meta, DirectNet.Probe probe,
                                 String link, String ip, int workers) throws Exception {
+        downloadChunks(file,meta,probe,link,workers,(url,range,validator)->DirectNet.open(url,ip,range,validator,this::publicConnection),this::requireNotCancelled);
+    }
+    private interface ChunkConnections {HttpsURLConnection open(URL url,String range,String validator)throws IOException;}
+    private void downloadChunks(File file,File meta,DirectNet.Probe probe,String link,int workers,ChunkConnections connections,ReadRetry.Check check)throws Exception {
         int count = TransferRules.chunkCount(probe.size, CHUNK);
         BitSet complete = new BitSet(count);
         if (file.exists() && meta.exists()) {
@@ -311,13 +386,13 @@ public final class DownloadService extends Service {
         for (int worker = 0; worker < Math.min(workers, pending.size()); worker++) {
             completion.submit(() -> {
                 while (true) {
-                    requireNotCancelled();
+                    check.run();
                     int n = next.getAndIncrement();
                     if (n >= pending.size()) return null;
                     int chunk = pending.get(n);
                     long from = chunk * CHUNK;
                     long to = Math.min(probe.size - 1, from + CHUNK - 1);
-                    downloadChunk(file, probe.finalUrl, ip, from, to, probe.size, probe.etag);
+                    downloadChunk(file, probe.finalUrl, connections,check, from, to, probe.size, probe.etag);
                     synchronized (metaLock) {
                         done.set(chunk);
                         saveMeta(meta, link, probe.size, done, probe.etag);
@@ -338,13 +413,13 @@ public final class DownloadService extends Service {
         if (done.cardinality() != count) throw new IOException("分块未全部完成");
     }
 
-    private void downloadChunk(File file, URL url, String ip, long start, long end, long size, String validator) throws IOException {
+    private void downloadChunk(File file, URL url, ChunkConnections connections,ReadRetry.Check check,long start, long end, long size, String validator) throws IOException {
         for (int attempt = 0; attempt < 2; attempt++) {
             long received = 0;
             HttpsURLConnection c = null;
             try {
-                requireNotCancelled();
-                c = DirectNet.open(url, ip, "bytes=" + start + "-" + end, validator);
+                check.run();
+                c = connections.open(url,"bytes=" + start + "-" + end, validator);
                 if (c.getResponseCode() != 206) throw new IOException("服务器未返回 HTTP 206，无法安全拼接分块");
                 String header = c.getHeaderField("Content-Range");
                 TransferRules.requireRange(header, start, end, size);
@@ -355,7 +430,7 @@ public final class DownloadService extends Service {
                     byte[] buffer = new byte[64*1024];
                     long remaining = end - start + 1;
                     while (remaining > 0) {
-                        requireNotCancelled();
+                        check.run();
                         int n = in.read(buffer, 0, (int)Math.min(buffer.length, remaining));
                         if (n < 0) throw new IOException("文件提前结束");
                         out.write(buffer, 0, n);
@@ -370,7 +445,7 @@ public final class DownloadService extends Service {
                 return;
             } catch (IOException e) {
                 bytes.addAndGet(-received);
-                if (cancelled.get() || attempt == 1) throw e;
+                if (cancelled.get() || Thread.currentThread().isInterrupted() || e instanceof DriveSession.AuthorizationRequired || attempt == 1) throw e;
                 try { Thread.sleep(250L * (attempt + 1)); }
                 catch (InterruptedException interrupted) {
                     Thread.currentThread().interrupt();
@@ -443,11 +518,13 @@ public final class DownloadService extends Service {
     }
     @Override public void onDestroy() {
         cancelled.set(true);
+        cancelConnections();
         super.onDestroy();
     }
 
     @Override public void onTimeout(int startId, int fgsType) {
         cancelled.set(true);
+        cancelConnections();
         stopForeground(STOP_FOREGROUND_REMOVE);
         stopSelf(startId);
     }

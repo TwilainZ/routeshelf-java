@@ -116,13 +116,9 @@ public final class MainActivity extends Activity {
         scroll.addView(root);
         setContentView(scroll);
 
-        TextView mark = text("G  /  DIRECT", 14, BLUE, true);
-        mark.setLetterSpacing(.15f);
-        root.addView(mark);
-        space(root, 10);
-        root.addView(text("Google Drive 直连下载", 27, INK, true));
+        root.addView(text(getString(R.string.app_name), 27, INK, true));
         space(root, 7);
-        root.addView(text("公开链接下载 · Google Drive 只读浏览", 13, MUTED, false));
+        root.addView(text("公开链接下载 · 云盘浏览、上传与管理", 13, MUTED, false));
         space(root, 6);
         root.addView(text(AppDiagnostics.buildLabel(this),13,MUTED,false));
         space(root, 22);
@@ -217,7 +213,12 @@ public final class MainActivity extends Activity {
         ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, items);
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         threads.setAdapter(adapter);
-        threads.setSelection(1);
+        int savedWorkers=getSharedPreferences("transfer-settings",MODE_PRIVATE).getInt("workers",4);
+        threads.setSelection(savedWorkers==1?0:savedWorkers==8?2:1);
+        threads.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
+            public void onNothingSelected(android.widget.AdapterView<?> parent){}
+            public void onItemSelected(android.widget.AdapterView<?> parent,View view,int position,long id){getSharedPreferences("transfer-settings",MODE_PRIVATE).edit().putInt("workers",position==0?1:position==1?4:8).apply();}
+        });
         network.addView(threads);
 
         LinearLayout actions = card(root);
@@ -253,7 +254,7 @@ public final class MainActivity extends Activity {
         });
         open.setOnClickListener(v -> openFile());
         space(root, 1);
-        root.addView(text("实验性开源原型 · 严格 HTTPS 校验 · 公开文件无需登录", 12, MUTED, false));
+        root.addView(text("已下载文件保存在 下载/GDirect Lite", 12, MUTED, false));
         linkInput.setText(getPreferences(MODE_PRIVATE).getString("link", ""));
         // Do not carry an old scanner-selected IP into the automatic routing workflow.
         takeSharedIntent(getIntent());

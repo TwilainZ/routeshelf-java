@@ -2,6 +2,8 @@ package dev.gdirect.lite;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.ByteArrayOutputStream;
 import java.net.InetAddress;
 import java.net.Proxy;
 import java.net.Socket;
@@ -23,7 +25,7 @@ import okhttp3.Protocol;
 import okhttp3.Request;
 import okhttp3.Response;
 
-/** GET-only adapter for the existing transfer code. DNS, TCP, TLS and cancellation use OkHttp. */
+/** Bounded metadata/chunk adapter. Only GET may retry; writes never follow redirects or blindly replay. */
 final class GoogleHttp {
     interface Clients { OkHttpClient get() throws IOException; }
     interface Guard { void check() throws IOException; }
@@ -56,9 +58,14 @@ final class GoogleHttp {
         private final Runnable failed;
         private final Request.Builder request;
         private final Guard guard;
+        private final ByteArrayOutputStream payload=new ByteArrayOutputStream();
         private volatile Response response;
         private volatile Call call;
         private volatile boolean closed;
+        private volatile Runnable closedHook;
+        private final java.util.concurrent.atomic.AtomicBoolean hookCalled=new java.util.concurrent.atomic.AtomicBoolean();
+        void onClose(Runnable hook){closedHook=hook;notifyClosed();}
+        private void notifyClosed(){Runnable hook=closedHook;if(closed&&hook!=null&&hookCalled.compareAndSet(false,true))hook.run();}
         GetConnection(URL url, Clients clients, Runnable failed, Guard guard) {
             super(url); this.clients = clients; this.failed = failed;
             this.guard = guard;
@@ -68,28 +75,44 @@ final class GoogleHttp {
         @Override public void connect() throws IOException {
             if (closed) throw new IOException("连接已关闭");
             if (response != null) return;
-            if (!"GET".equals(method) || doOutput) throw new IOException("Only GET is supported");
+            if ("GET".equals(method) && doOutput) throw new IOException("GET cannot carry a body");
             // At most two attempts, and only before a response. No redirects or mutations are replayed.
-            for (int attempt = 0; attempt < 2; attempt++) {
+            int limit="GET".equals(method)?2:1;
+            for (int attempt = 0; attempt < limit; attempt++) {
                 OkHttpClient client = clients.get().newBuilder().connectTimeout(getConnectTimeout(), TimeUnit.MILLISECONDS)
-                    .readTimeout(getReadTimeout(), TimeUnit.MILLISECONDS).build();
+                    .readTimeout(getReadTimeout(), TimeUnit.MILLISECONDS).writeTimeout(getReadTimeout(),TimeUnit.MILLISECONDS).retryOnConnectionFailure(false)
+                    .followRedirects(false).followSslRedirects(false).build();
                 guard.check();
-                call = client.newCall(request.get().build());
+                okhttp3.RequestBody body=("POST".equals(method)||"PATCH".equals(method)||"PUT".equals(method))
+                    ?okhttp3.RequestBody.create(payload.toByteArray(),okhttp3.MediaType.parse(getRequestProperty("Content-Type")==null?"application/json; charset=utf-8":getRequestProperty("Content-Type"))):null;
+                call = client.newCall(request.method(method,body).build());
                 if (closed || Thread.currentThread().isInterrupted()) { call.cancel(); throw new java.io.InterruptedIOException("连接已取消"); }
                 try {
                     response = call.execute(); connected = true; return;
                 } catch (IOException error) {
                     failed.run();
-                    if (attempt == 1 || Thread.currentThread().isInterrupted() || closed) throw error;
+                    if (attempt + 1 >= limit || Thread.currentThread().isInterrupted() || closed) throw error;
                 }
             }
         }
         @Override public void disconnect() {
             closed = true;
-            if (call != null) call.cancel();
-            if (response != null) response.close();
+            try{if (call != null) call.cancel();if (response != null) response.close();}finally{notifyClosed();}
         }
         @Override public boolean usingProxy() { return false; }
+        @Override public void setRequestMethod(String value) throws java.net.ProtocolException {
+            if(connected || !(value.equals("GET")||value.equals("POST")||value.equals("PATCH")||value.equals("PUT")||value.equals("DELETE")))
+                throw new java.net.ProtocolException("Unsupported request method");
+            method=value;
+        }
+        @Override public String getRequestProperty(String name) { return request.build().header(name); }
+        @Override public OutputStream getOutputStream() throws IOException {
+            if(connected || !doOutput) throw new IOException("Output is not available");
+            return new OutputStream() {
+                public void write(int b)throws IOException { if(payload.size()>=1024*1024)throw new IOException("Request metadata too large");payload.write(b); }
+                public void write(byte[] b,int offset,int length)throws IOException { if(length>1024*1024-payload.size())throw new IOException("Request metadata too large");payload.write(b,offset,length); }
+            };
+        }
         @Override public void setRequestProperty(String key, String value) {
             if (connected) throw new IllegalStateException("Already connected");
             request.header(key, value);
@@ -141,9 +164,13 @@ final class GoogleHttp {
         @Override public String[] getDefaultCipherSuites() { return delegate.getDefaultCipherSuites(); }
         @Override public String[] getSupportedCipherSuites() { return delegate.getSupportedCipherSuites(); }
         @Override public Socket createSocket() throws IOException { return configure(delegate.createSocket()); }
-        @Override public Socket createSocket(Socket s, String h, int p, boolean close) throws IOException { return configure(delegate.createSocket(s,h,p,close)); }
-        @Override public Socket createSocket(String h, int p) throws IOException { return configure(delegate.createSocket(h,p)); }
-        @Override public Socket createSocket(String h, int p, InetAddress local, int lp) throws IOException { return configure(delegate.createSocket(h,p,local,lp)); }
+        @Override public Socket createSocket(Socket s, String h, int p, boolean close) throws IOException { // Android Conscrypt can ignore an empty serverNames list and retain the
+            // original peer hostname. Use the already-connected numeric peer so it
+            // never learns a DNS SNI name. OkHttp still verifies the canonical URL
+            // hostname against the certificate before sending any HTTP headers.
+            return configure(delegate.createSocket(s,s.getInetAddress().getHostAddress(),p,close)); }
+        @Override public Socket createSocket(String h, int p) throws IOException { return configure(delegate.createSocket(InetAddress.getByName(h),p)); }
+        @Override public Socket createSocket(String h, int p, InetAddress local, int lp) throws IOException { return configure(delegate.createSocket(InetAddress.getByName(h),p,local,lp)); }
         @Override public Socket createSocket(InetAddress h, int p) throws IOException { return configure(delegate.createSocket(h,p)); }
         @Override public Socket createSocket(InetAddress h, int p, InetAddress local, int lp) throws IOException { return configure(delegate.createSocket(h,p,local,lp)); }
     }

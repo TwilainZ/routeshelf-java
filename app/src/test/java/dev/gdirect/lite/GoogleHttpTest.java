@@ -28,11 +28,49 @@ import org.junit.Test;
 
 /** Real TLS over loopback with ephemeral fixture certificates; production trust is never disabled. */
 public final class GoogleHttpTest {
+    @Test public void cancellingActiveConnectionDoesNotWaitForItsReadTimeout()throws Exception {
+        try(Fixture f=new Fixture(HOST)) {
+            f.server.enqueue(new MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE));
+            OkHttpClient client=f.client(DirectRoutes.TlsMode.NORMAL,true);
+            HttpsURLConnection c=GoogleHttp.open(f.url(),()->client,()->{});AtomicInteger closed=new AtomicInteger();
+            ((GoogleHttp.GetConnection)c).onClose(closed::incrementAndGet);
+            java.util.concurrent.CountDownLatch done=new java.util.concurrent.CountDownLatch(1);
+            java.util.concurrent.atomic.AtomicReference<IOException> failure=new java.util.concurrent.atomic.AtomicReference<>();
+            Thread reader=new Thread(()->{try{c.getResponseCode();}catch(IOException e){failure.set(e);}finally{done.countDown();}});
+            reader.start();
+            try{assertNotNull(f.server.takeRequest(2,TimeUnit.SECONDS));c.disconnect();assertTrue(done.await(2,TimeUnit.SECONDS));assertNotNull(failure.get());c.disconnect();assertEquals(1,closed.get());}
+            finally{c.disconnect();reader.join(2000);}
+        }
+    }
+    @Test public void patchUsesOneActualTlsRequestAndPreservesJsonBody() throws Exception {
+        try(Fixture f=new Fixture(HOST)) {
+            f.server.enqueue(new MockResponse().setBody("{}"));
+            OkHttpClient client=f.client(DirectRoutes.TlsMode.NO_SNI,true);
+            HttpsURLConnection c=GoogleHttp.open(f.url(),()->client,()->{});
+            c.setRequestMethod("PATCH");c.setDoOutput(true);c.setRequestProperty("Content-Type","application/json; charset=utf-8");
+            try(java.io.OutputStream out=c.getOutputStream()){out.write("{\"name\":\"new\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8));}
+            assertEquals(200,c.getResponseCode());
+            RecordedRequest r=f.server.takeRequest(2,TimeUnit.SECONDS);
+            assertEquals("PATCH",r.getMethod());assertEquals("{\"name\":\"new\"}",r.getBody().readUtf8());
+            assertEquals(1,f.server.getRequestCount());c.disconnect();
+        }
+    }
+    @Test public void mutationIsNotReplayedWhenServerDropsAcknowledgment()throws Exception {
+        try(Fixture f=new Fixture(HOST)) {
+            f.server.enqueue(new MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AFTER_REQUEST));
+            OkHttpClient client=f.client(DirectRoutes.TlsMode.NORMAL,true);
+            AtomicInteger selections=new AtomicInteger();
+            HttpsURLConnection c=GoogleHttp.open(f.url(),()->{selections.incrementAndGet();return client;},()->{});
+            c.setRequestMethod("POST");c.setDoOutput(true);try(java.io.OutputStream out=c.getOutputStream()){out.write("{}".getBytes());}
+            assertThrows(IOException.class,c::getResponseCode);assertEquals(1,selections.get());assertEquals(1,f.server.getRequestCount());c.disconnect();
+        }
+    }
     private static final String HOST = "www.googleapis.com";
     static final class Fixture implements AutoCloseable {
         final MockWebServer server = new MockWebServer();
         final CompletableFuture<List<SNIServerName>> sni = new CompletableFuture<>();
         final HandshakeCertificates clientTrust;
+        final java.util.concurrent.atomic.AtomicReference<String> tlsPeer = new java.util.concurrent.atomic.AtomicReference<>();
         Fixture(String certificateHost) throws Exception {
             HeldCertificate ca = new HeldCertificate.Builder().certificateAuthority(0).commonName("Unit test CA").build();
             HeldCertificate leaf = new HeldCertificate.Builder().commonName(certificateHost)
@@ -47,7 +85,7 @@ public final class GoogleHttpTest {
         URL url() throws Exception { return new URL("https://" + HOST + ":" + server.getPort() + "/drive/v3/files?alt=media"); }
         OkHttpClient client(DirectRoutes.TlsMode mode, boolean trusted) throws Exception {
             OkHttpClient.Builder builder = new OkHttpClient.Builder().protocols(Collections.singletonList(Protocol.HTTP_1_1));
-            if (trusted) builder.sslSocketFactory(clientTrust.sslSocketFactory(), clientTrust.trustManager());
+            if (trusted) builder.sslSocketFactory(new RecordPeer(clientTrust.sslSocketFactory(),tlsPeer), clientTrust.trustManager());
             return GoogleHttp.direct(builder.build(),new DirectRoutes.Route(HOST,"127.0.0.1",mode,0));
         }
         @Override public void close() throws Exception { server.shutdown(); }
@@ -67,6 +105,9 @@ public final class GoogleHttpTest {
             assertEquals("Bearer test-fixture-only",request.getHeader("Authorization"));
             assertEquals(HOST, connection.getURL().getHost());
             assertEquals(mode == DirectRoutes.TlsMode.NO_SNI, f.sni.get(2,TimeUnit.SECONDS).isEmpty());
+            // Covers providers that ignore an empty SSLParameters serverNames list:
+            // the no-SNI TLS socket must never receive the canonical DNS peer name.
+            assertEquals(mode == DirectRoutes.TlsMode.NO_SNI ? "127.0.0.1" : HOST,f.tlsPeer.get());
             connection.disconnect();
         }
     }
@@ -148,6 +189,19 @@ public final class GoogleHttpTest {
             assertThrows(IOException.class,() -> c.getInputStream().readAllBytes());
             assertEquals(1,failures.get()); assertEquals(1,f.server.getRequestCount()); c.disconnect();
         }
+    }
+
+    private static final class RecordPeer extends SSLSocketFactory {
+        final SSLSocketFactory delegate;
+        final java.util.concurrent.atomic.AtomicReference<String> peer;
+        RecordPeer(SSLSocketFactory delegate,java.util.concurrent.atomic.AtomicReference<String> peer) {this.delegate=delegate;this.peer=peer;}
+        public String[] getDefaultCipherSuites(){return delegate.getDefaultCipherSuites();}
+        public String[] getSupportedCipherSuites(){return delegate.getSupportedCipherSuites();}
+        public Socket createSocket(Socket s,String h,int p,boolean close)throws IOException {peer.set(h);return delegate.createSocket(s,h,p,close);}
+        public Socket createSocket(String h,int p)throws IOException{return delegate.createSocket(h,p);}
+        public Socket createSocket(String h,int p,InetAddress l,int lp)throws IOException{return delegate.createSocket(h,p,l,lp);}
+        public Socket createSocket(InetAddress h,int p)throws IOException{return delegate.createSocket(h,p);}
+        public Socket createSocket(InetAddress h,int p,InetAddress l,int lp)throws IOException{return delegate.createSocket(h,p,l,lp);}
     }
 
     private static final class ObserveSni extends SSLSocketFactory {

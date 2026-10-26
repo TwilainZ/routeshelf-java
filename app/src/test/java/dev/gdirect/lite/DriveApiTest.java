@@ -9,6 +9,7 @@ public final class DriveApiTest {
     @Test public void libraryViewsHaveIndependentQueriesAndServerSideSorts() throws Exception {
         for(DriveApi.View view:DriveApi.View.values()) {
             String decoded=URLDecoder.decode(DriveApi.listUrl("root","sample","next",view,DriveApi.Sort.MODIFIED).toString(),"UTF-8");
+            if(view==DriveApi.View.DRIVES){assertTrue(decoded.startsWith("https://www.googleapis.com/drive/v3/drives?"));assertTrue(decoded.contains("name contains 'sample'"));continue;}
             assertTrue(decoded.contains(view==DriveApi.View.TRASH?"trashed = true":"trashed = false"));
             assertEquals(view==DriveApi.View.FOLDER,decoded.contains("in parents"));
             assertEquals(view==DriveApi.View.STARRED,decoded.contains("starred = true"));
@@ -24,6 +25,7 @@ public final class DriveApiTest {
             DriveApi.FileEntry file=new DriveApi.Page("{\"files\":[{\"id\":\"doc\",\"name\":\"Example\",\"mimeType\":\"application/vnd.google-apps."+type+"\",\"capabilities\":{\"canDownload\":true}}]}").files.get(0);
             assertTrue(file.downloadable); assertEquals(-1,file.size);
             assertEquals(type.equals("spreadsheet")?".xlsx":".pdf",file.exportSuffix);
+            assertEquals("application/pdf",file.previewMime);assertTrue(URLDecoder.decode(api.exportUrl(file,file.previewMime).toString(),"UTF-8").contains("mimeType=application/pdf"));
             java.net.URL url=api.exportUrl(file); DriveTransport.requireApiUrl(url);
             assertEquals("www.googleapis.com",url.getHost()); assertEquals("/drive/v3/files/doc/export",url.getPath());
         }

@@ -98,6 +98,19 @@ public final class DirectRoutesTest {
         assertFalse(worker.isAlive()); assertNotNull(result.get()); assertTrue(memory.values.isEmpty());
     }
 
+    @Test public void networkResetDuringCacheLoadCannotReturnAnOldRoute() throws Exception {
+        AtomicReference<DirectRoutes> selector=new AtomicReference<>();
+        DirectRoutes.Route stale=new DirectRoutes.Route(HOST,"8.8.8.8",DirectRoutes.TlsMode.NORMAL,System.currentTimeMillis());
+        DirectRoutes.Store store=new DirectRoutes.Store() {
+            public DirectRoutes.Route load(String host){selector.get().reset();return stale;}
+            public void save(String host,DirectRoutes.Route route){fail("stale route saved");}
+            public void remove(String host){}
+            public void clear(){}
+        };
+        selector.set(new DirectRoutes(host->Collections.emptyList(),route->{fail("stale probe");},store,message->{}));
+        assertThrows(IOException.class,()->selector.get().select(HOST,Collections.emptySet()));
+    }
+
     @Test public void staleHistoryCannotExcludeFreshDnsAndDnsCannotExcludeBootstrapHints() {
         java.util.List<String> history = new java.util.ArrayList<>(), fresh = new java.util.ArrayList<>();
         for (int i = 1; i <= 20; i++) { history.add("8.8.8." + i); fresh.add("8.8.4." + i); }

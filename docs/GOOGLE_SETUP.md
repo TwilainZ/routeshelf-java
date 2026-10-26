@@ -1,6 +1,6 @@
-# 配置 Google Drive 只读授权
+# 配置 Google Drive 访问授权
 
-本实现使用 Google 官方 Android `AuthorizationClient` 请求用户对 Drive 的授权。这是访问云盘数据的授权，不是本应用自行验证密码，也不建立应用自己的用户账户或服务器。
+本实现使用 Google 官方 Android `AuthorizationClient` 请求 Drive 授权；默认只读，启用文件管理时单独申请 `https://www.googleapis.com/auth/drive`。这是用户数据访问授权，不是收集密码，也不建立自己的账户服务器。
 
 项目仍处于开发和测试阶段。尚未配置 Google Cloud 项目时可以编译、安装和运行公开文件下载；私人文件授权必须完成下面配置后在装有 Google Play 服务的 Android 设备上实测。
 
@@ -8,7 +8,7 @@
 
 1. 在你拥有的 Google Cloud 项目中启用 **Google Drive API**。
 2. 在 **Google Auth Platform** 设置 Branding、Audience 和 Data Access。填写真实应用名称、支持邮箱等 Google 要求的资料；外部应用先保持 Testing，并加入实际测试账号。
-3. 添加唯一需要的范围 `https://www.googleapis.com/auth/drive.readonly`。它允许读取用户的 Drive 文件和内容，是 **restricted scope**。`drive.file` 权限更窄，但不能满足浏览既有私人云盘文件的功能；本应用不申请可修改或删除文件的 `drive` 全权限。
+3. 在本次统一配置中登记 `https://www.googleapis.com/auth/drive.readonly`，以及文件管理使用的 `https://www.googleapis.com/auth/drive`。两者均为 restricted scope；应用默认仍只请求只读，用户主动启用文件管理后才申请管理权限。`drive.file` 更窄，但不能管理全部既有私人文件。增加功能权限不要求更换 APK 签名或新建另一套 Android 客户端。
 4. 创建 **Android** 类型的 OAuth 客户端，包名为 `dev.gdirect.lite`，签名 SHA-1 必须对应你实际安装的 APK。不要创建 Desktop 客户端，也不需要把客户端密钥或 JSON 文件放进 Android 应用。
 5. 安装 APK，打开“我的 Google Drive → 连接 Google Drive”，在 Google 提供的账号选择/同意页面中授权。应用检查是否实际获得只读范围，再加载文件列表。
 
@@ -98,12 +98,12 @@ CI 另提供 `GDirectLite-inspector-RUN-ATTEMPT` 工件，包名为 `dev.gdirect
 ## 安全边界和当前限制
 
 - Token 只存在于当前应用进程内存，不写入 SharedPreferences / 数据库 / Bundle / Intent / URL / 日志。Google Play 服务自身的账户及授权缓存由系统组件管理。
-- 带 Authorization 的请求仅发往 `https://www.googleapis.com/drive/v3/files` 及受控文件子路径；拒绝所有重定向，使用系统 HTTPS 证书和主机名校验。私人 API 和下载不接收手工 IP 参数。
+- Authorization 仅发往精确 `https://www.googleapis.com:443` 的受控文件、权限、共享云盘和上传路径；拒绝重定向。上传会话 Location 必须保持同源和受控上传路径，不能把令牌带到其他主机。私人请求不接收手填 IP。
 - 私人文件 API 和下载现默认使用自动直连，和公开下载共享连接方式设置；证书仍按真实域名验证。官方授权、重新获取令牌及远端撤销走系统网络。直连的流程、限制与关闭代理的设备验收见 [DIRECT_NETWORK.md](DIRECT_NETWORK.md)。Cloud 配置正确不代表直连可达，直连可达也不能代替 OAuth 签名匹配。
 - 断开或切换会话会使旧列表请求及下载会话失效。启动私人下载的 Intent 仅含文件 ID 和非敏感会话代数。
 - 私人下载暂为单流；不会持久化跨会话续传信息。临时内容在应用缓存目录，完成、失败或取消后清理，进程异常退出的残留在下一次启动下载服务时清理。
 - 下载在核对元数据大小及可用的 MD5 后才发布到系统下载目录；MD5 用于检测传输错误或版本变化，不是安全签名。
-- 暂不支持共享云端硬盘、快捷方式解析、Google Docs/Sheets/Slides 导出、上传、挂载或文件队列。用户选择的普通文件必须允许下载。
+- 共享云端硬盘、快捷方式、PDF/XLSX 导出、分块上传、文件管理及共享已接入。仍不支持跨进程上传恢复、离线同步、挂载或文件队列；上传会消耗一份私有暂存空间，同名上传创建新文件。预览受格式、大小及设备解码能力限制。
 - 面向公开用户发布前，应按 Google 当前政策评估 restricted-scope 验证、隐私政策及是否需要安全评估；本应用的 Android OAuth 客户端方案不同于桌面 CLI 的凭据方案。
 
 ## 官方参考

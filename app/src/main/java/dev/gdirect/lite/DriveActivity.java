@@ -51,7 +51,7 @@ public final class DriveActivity extends AppCompatActivity {
     private final Deque<String[]> parents = new ArrayDeque<>();
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final FileAdapter adapter = new FileAdapter();
-    private TextView message, location, transfer, explanation, networkStatus;
+    private TextView message, location, transfer, explanation, networkStatus,accessStatus;
     private LinearLayout queryRow;
     private ListView fileList;
     private EditText search;
@@ -59,6 +59,7 @@ public final class DriveActivity extends AppCompatActivity {
     private TextInputLayout searchField;
     private DriveApi.View currentView=DriveApi.View.FOLDER;
     private DriveApi.Sort currentSort=DriveApi.Sort.NAME;
+    private String currentDrive="";
     private Button connect, disconnect, find, more, up;
     private ProgressBar loadingIndicator;
     private Future<?> listing;
@@ -68,8 +69,17 @@ public final class DriveActivity extends AppCompatActivity {
     private Integer lastActivityResult, lastSdkStatus;
     private String authorizationPhase = "not-requested";
     private boolean loading, authorizing, waitingResolution, wasConnected, transferActive, wasRevoking;
+    private boolean editing;
+    private boolean managementRequested;
+    private long observedMutation=MutationCoordinator.INSTANCE.revision();
+    private String uploadParent;
+    private long uploadSession=-1;
     private final Runnable ticker = new Runnable() {
         @Override public void run() {
+            if(editing!=MutationCoordinator.INSTANCE.busy())updateControls();
+            if(observedMutation!=MutationCoordinator.INSTANCE.revision()&&!loading&&!editing&&DriveSession.INSTANCE.connected()) {
+                observedMutation=MutationCoordinator.INSTANCE.revision();load(false);
+            }
             networkStatus.setText(GoogleNetwork.get().summary());
             if (wasConnected && !DriveSession.INSTANCE.connected()) clearBrowser();
             if (wasRevoking && !GoogleAuthorization.revoking.get()) {
@@ -103,9 +113,25 @@ public final class DriveActivity extends AppCompatActivity {
         super.onCreate(saved);
         folderName = getString(R.string.drive_root);
         if (saved != null) {
+            managementRequested=saved.getBoolean("management_requested",false);
+            uploadParent=saved.getString("upload_parent");uploadSession=saved.getLong("upload_session",-1);
             authorizationPhase = saved.getString("authorization_phase","not-requested");
             if (saved.containsKey("last_activity_result")) lastActivityResult = saved.getInt("last_activity_result");
             if (saved.containsKey("last_sdk_status")) lastSdkStatus = saved.getInt("last_sdk_status");
+            try {
+                if(DriveSession.INSTANCE.connected()&&saved.getLong("browser_session",-1)==DriveSession.INSTANCE.lease().id()) {
+                    org.json.JSONObject state=new org.json.JSONObject(saved.getString("browser_state","{}"));
+                    folder=DriveApi.requireId(state.optString("folder","root"));folderName=state.optString("name",folderName);
+                    currentView=DriveApi.View.valueOf(state.optString("view","FOLDER"));currentSort=DriveApi.Sort.valueOf(state.optString("sort","NAME"));
+                    currentDrive=state.optString("drive","");if(!currentDrive.isEmpty())DriveApi.requireId(currentDrive);activeSearch=state.optString("query","");
+                    org.json.JSONArray history=state.optJSONArray("parents");
+                    if(history!=null)for(int i=0;i<Math.min(history.length(),100);i++) {
+                        org.json.JSONArray record=history.getJSONArray(i);String id=DriveApi.requireId(record.getString(0)),drive=record.getString(3);
+                        DriveApi.View.valueOf(record.getString(2));if(!drive.isEmpty())DriveApi.requireId(drive);
+                        parents.addLast(new String[]{id,record.getString(1),record.getString(2),drive});
+                    }
+                }
+            }catch(IOException|org.json.JSONException|IllegalArgumentException error){folder="root";folderName=getString(R.string.drive_root);currentView=DriveApi.View.FOLDER;currentSort=DriveApi.Sort.NAME;currentDrive="";activeSearch="";parents.clear();}
         }
         waitingResolution = saved != null && saved.getBoolean("waiting_resolution", false);
         authorizing = waitingResolution;
@@ -143,6 +169,7 @@ public final class DriveActivity extends AppCompatActivity {
         networkStatus = label(GoogleNetwork.get().summary(),14);
         networkStatus.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         root.addView(networkStatus);
+        accessStatus=label("",14);root.addView(accessStatus);
         connect = button(R.string.drive_connect);
         connect.setOnClickListener(v -> authorize());
         root.addView(connect, new LinearLayout.LayoutParams(-1,-2));
@@ -155,6 +182,8 @@ public final class DriveActivity extends AppCompatActivity {
         searchField = new TextInputLayout(this);
         searchField.setHint(getString(R.string.drive_search_hint));
         search = new TextInputEditText(searchField.getContext());
+        search.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(200)});
+        search.setText(activeSearch);searchField.setHint(getString(currentView==DriveApi.View.FOLDER?R.string.drive_search_hint:R.string.drive_search_all));
         search.setSingleLine(true); search.setTextSize(16); search.setMinHeight(dp(48));
         search.setInputType(android.text.InputType.TYPE_CLASS_TEXT);
         search.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
@@ -173,6 +202,7 @@ public final class DriveActivity extends AppCompatActivity {
         viewPicker = new android.widget.Spinner(this);
         android.widget.ArrayAdapter<CharSequence> views = android.widget.ArrayAdapter.createFromResource(this,R.array.drive_views,android.R.layout.simple_spinner_item);
         views.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item); viewPicker.setAdapter(views);
+        viewPicker.setSelection(currentView.ordinal());
         viewPicker.setMinimumHeight(dp(48)); viewPicker.setContentDescription(getString(R.string.drive_view));
         root.addView(viewPicker);
         viewPicker.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
@@ -180,7 +210,7 @@ public final class DriveActivity extends AppCompatActivity {
             public void onItemSelected(android.widget.AdapterView<?> p,View v,int n,long id) {
                 DriveApi.View selected=DriveApi.View.values()[n];
                 if(selected==currentView || !DriveSession.INSTANCE.connected())return;
-                currentView=selected; parents.clear(); folder="root"; activeSearch=""; search.setText("");
+                currentView=selected;currentDrive=""; parents.clear(); folder="root"; activeSearch=""; search.setText("");
                 folderName=getResources().getStringArray(R.array.drive_views)[n]; location.setText(folderName);
                 searchField.setHint(getString(selected==DriveApi.View.FOLDER?R.string.drive_search_hint:R.string.drive_search_all));
                 if(selected==DriveApi.View.RECENT) { currentSort=DriveApi.Sort.MODIFIED; sortPicker.setSelection(2); }
@@ -190,6 +220,7 @@ public final class DriveActivity extends AppCompatActivity {
         sortPicker = new android.widget.Spinner(this);
         android.widget.ArrayAdapter<CharSequence> sorts = android.widget.ArrayAdapter.createFromResource(this,R.array.drive_sorts,android.R.layout.simple_spinner_item);
         sorts.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item); sortPicker.setAdapter(sorts);
+        sortPicker.setSelection(currentSort.ordinal());
         sortPicker.setMinimumHeight(dp(48)); sortPicker.setContentDescription(getString(R.string.drive_sort));
         root.addView(sortPicker);
         sortPicker.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
@@ -225,19 +256,23 @@ public final class DriveActivity extends AppCompatActivity {
         fileList.setAdapter(adapter);
         container.addView(fileList,new LinearLayout.LayoutParams(-1,-1));
         updateControls();
-        if (DriveSession.INSTANCE.connected()) load(false);
+        if (DriveSession.INSTANCE.connected()) {if(editing)message.setText(R.string.drive_editing);else load(false);}
         else message.setText(GoogleAuthorization.revoking.get() ? R.string.drive_revoking : R.string.drive_not_connected);
     }
 
     private void authorize() {
+        authorize(false);
+    }
+    private void authorize(boolean manage) {
         if (authorizing || GoogleAuthorization.revoking.get()) return;
         authorizationPhase = "request";
+        managementRequested=manage;
         lastActivityResult = null; lastSdkStatus = null;
         authorizing = true;
         updateControls();
         message.setText(R.string.drive_authorizing);
         AuthorizationRequest request = AuthorizationRequest.builder()
-            .setRequestedScopes(Collections.singletonList(new Scope(DriveApi.READONLY_SCOPE))).build();
+            .setRequestedScopes(Collections.singletonList(new Scope(manage?DriveApi.MANAGE_SCOPE:DriveApi.READONLY_SCOPE))).build();
         Identity.getAuthorizationClient(this).authorize(request)
             .addOnSuccessListener(result -> {
                 if (isDestroyed() || isFinishing()) return;
@@ -261,6 +296,20 @@ public final class DriveActivity extends AppCompatActivity {
 
     @Override protected void onActivityResult(int request, int resultCode, Intent data) {
         super.onActivityResult(request,resultCode,data);
+        if(request==703) {
+            if(resultCode!=RESULT_OK||data==null||data.getData()==null)return;
+            if(uploadParent==null||DownloadService.snapshot.active){message.setText(R.string.drive_download_busy);return;}
+            try {
+                DriveSession.Lease lease=DriveSession.INSTANCE.lease();lease.requireWrite();
+                if(lease.id()!=uploadSession)throw new DriveSession.AuthorizationRequired();
+                Intent transfer=new Intent(this,DownloadService.class).setAction(DownloadService.ACTION_START)
+                    .putExtra(DownloadService.EXTRA_UPLOAD_URI,data.getData().toString()).putExtra(DownloadService.EXTRA_UPLOAD_PARENT,uploadParent)
+                    .putExtra(DownloadService.EXTRA_DRIVE_SESSION,uploadSession);
+                startForegroundService(transfer);message.setText(R.string.drive_upload_started);
+            } catch(IOException|RuntimeException error){message.setText(R.string.drive_upload_failed);}
+            finally{uploadParent=null;uploadSession=-1;}
+            return;
+        }
         if (request != AUTHORIZE) return;
         authorizationPhase = "callback";
         lastActivityResult = resultCode;
@@ -276,10 +325,11 @@ public final class DriveActivity extends AppCompatActivity {
 
     private void acceptAuthorization(AuthorizationResult result) {
         try {
-            if (!result.getGrantedScopes().contains(DriveApi.READONLY_SCOPE)) {
+            boolean manage=result.getGrantedScopes().contains(DriveApi.MANAGE_SCOPE);
+            if (!manage && !result.getGrantedScopes().contains(DriveApi.READONLY_SCOPE)) {
                 authFailed(getString(R.string.drive_scope_missing)); return;
             }
-            DriveSession.INSTANCE.connect(result.getAccessToken());
+            DriveSession.INSTANCE.connect(result.getAccessToken(),new java.util.HashSet<>(result.getGrantedScopes()),managementRequested);
             authorizationPhase = "authorized";
             authorizing = false; waitingResolution = false;
             clearBrowser();
@@ -319,6 +369,7 @@ public final class DriveActivity extends AppCompatActivity {
         if (listing != null) listing.cancel(true);
         loading = false;
         files.clear(); nextPage = ""; parents.clear(); folder = "root"; activeSearch = "";
+        currentDrive="";
         currentView=DriveApi.View.FOLDER; currentSort=DriveApi.Sort.NAME;
         viewPicker.setSelection(0); sortPicker.setSelection(0); searchField.setHint(getString(R.string.drive_search_hint));
         folderName = getString(R.string.drive_root);
@@ -329,6 +380,7 @@ public final class DriveActivity extends AppCompatActivity {
     }
 
     private void updateControls() {
+        editing=MutationCoordinator.INSTANCE.busy();
         wasConnected = DriveSession.INSTANCE.connected();
         wasRevoking = GoogleAuthorization.revoking.get();
         connect.setVisibility(wasConnected ? View.GONE : View.VISIBLE);
@@ -336,22 +388,23 @@ public final class DriveActivity extends AppCompatActivity {
         disconnect.setVisibility(wasConnected ? View.VISIBLE : View.GONE);
         disconnect.setEnabled(!authorizing);
         explanation.setVisibility(wasConnected ? View.GONE : View.VISIBLE);
+        accessStatus.setVisibility(wasConnected?View.VISIBLE:View.GONE);accessStatus.setText(DriveSession.INSTANCE.writable()?R.string.drive_access_manage:R.string.drive_access_readonly);
         queryRow.setVisibility(wasConnected ? View.VISIBLE : View.GONE);
         viewPicker.setVisibility(wasConnected?View.VISIBLE:View.GONE); sortPicker.setVisibility(wasConnected?View.VISIBLE:View.GONE);
-        viewPicker.setEnabled(!loading); sortPicker.setEnabled(!loading);
+        viewPicker.setEnabled(!loading&&!editing); sortPicker.setEnabled(!loading&&!editing&&currentView!=DriveApi.View.DRIVES);
         location.setVisibility(wasConnected ? View.VISIBLE : View.GONE);
-        search.setEnabled(wasConnected && !loading);
-        find.setEnabled(wasConnected && !loading);
+        search.setEnabled(wasConnected && !loading&&!editing);
+        find.setEnabled(wasConnected && !loading&&!editing);
         up.setVisibility(parents.isEmpty() ? View.GONE : View.VISIBLE);
-        up.setEnabled(!loading);
+        up.setEnabled(!loading&&!editing);
         more.setVisibility(nextPage.isEmpty() ? View.GONE : View.VISIBLE);
-        more.setEnabled(!loading);
-        loadingIndicator.setVisibility(loading || authorizing || wasRevoking ? View.VISIBLE : View.GONE);
+        more.setEnabled(!loading&&!editing);
+        loadingIndicator.setVisibility(loading || editing || authorizing || wasRevoking ? View.VISIBLE : View.GONE);
         invalidateOptionsMenu();
     }
 
     private void startSearch() {
-        if (loading || !DriveSession.INSTANCE.connected()) return;
+        if (loading || editing || !DriveSession.INSTANCE.connected()) return;
         ((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE))
             .hideSoftInputFromWindow(search.getWindowToken(),0);
         search.clearFocus();
@@ -359,6 +412,7 @@ public final class DriveActivity extends AppCompatActivity {
     }
 
     private void load(boolean append) {
+        if(editing)return;
         DriveSession.Lease lease;
         try { lease = DriveSession.INSTANCE.lease(); }
         catch (DriveSession.AuthorizationRequired error) { clearBrowser(); return; }
@@ -366,11 +420,12 @@ public final class DriveActivity extends AppCompatActivity {
         if (listing != null) listing.cancel(true);
         String queryFolder = folder, query = activeSearch, page = append ? nextPage : "";
         DriveApi.View queryView=currentView; DriveApi.Sort querySort=currentSort;
+        String queryDrive=currentDrive;
         if (!append) { files.clear(); nextPage = ""; adapter.notifyDataSetChanged(); }
         loading = true; updateControls(); message.setText(R.string.drive_loading);
         listing = network.submit(() -> {
             try {
-                DriveApi.Page result = new DriveApi(GoogleAuthorization.transport(this,lease)).list(queryFolder,query,page,queryView,querySort);
+                DriveApi.Page result = new DriveApi(GoogleAuthorization.transport(this,lease)).list(queryFolder,query,page,queryView,querySort,queryDrive);
                 handler.post(() -> {
                     if (isDestroyed() || version != requestVersion) return;
                     try { lease.requireCurrent(); } catch (DriveSession.AuthorizationRequired error) { clearBrowser(); return; }
@@ -390,7 +445,9 @@ public final class DriveActivity extends AppCompatActivity {
     }
 
     private void enterFolder(DriveApi.FileEntry entry) {
-        parents.push(new String[]{folder,folderName,currentView.name()});
+        if(parents.size()>=100){message.setText(R.string.drive_folder_depth);return;}
+        parents.push(new String[]{folder,folderName,currentView.name(),currentDrive});
+        if(!entry.driveId.isEmpty())currentDrive=entry.driveId;
         currentView=DriveApi.View.FOLDER; viewPicker.setSelection(0); searchField.setHint(getString(R.string.drive_search_hint));
         folder = entry.id; folderName = entry.name; activeSearch = "";
         search.setText(""); location.setText(folderName); load(false);
@@ -399,6 +456,7 @@ public final class DriveActivity extends AppCompatActivity {
         if (parents.isEmpty()) { finish(); return; }
         String[] previous = parents.pop(); folder = previous[0]; folderName = previous[1]; activeSearch = "";
         currentView=DriveApi.View.valueOf(previous[2]); viewPicker.setSelection(currentView.ordinal());
+        currentDrive=previous[3];
         searchField.setHint(getString(currentView==DriveApi.View.FOLDER?R.string.drive_search_hint:R.string.drive_search_all));
         search.setText(""); location.setText(folderName); load(false);
     }
@@ -410,36 +468,251 @@ public final class DriveActivity extends AppCompatActivity {
             != android.content.pm.PackageManager.PERMISSION_GRANTED) requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},702);
         Intent request = new Intent(this,DownloadService.class).setAction(DownloadService.ACTION_START);
         request.putExtra(DownloadService.EXTRA_DRIVE_ID,file.id);
+        request.putExtra(DownloadService.EXTRA_THREADS,getSharedPreferences("transfer-settings",MODE_PRIVATE).getInt("workers",4));
         try { request.putExtra(DownloadService.EXTRA_DRIVE_SESSION,DriveSession.INSTANCE.lease().id()); }
         catch (DriveSession.AuthorizationRequired error) { clearBrowser(); return; }
         try { startForegroundService(request); message.setText(R.string.drive_download_started); }
         catch (RuntimeException error) { message.setText(R.string.drive_download_failed); }
     }
+    private void openShortcut(DriveApi.FileEntry entry) {
+        if(loading||editing)return;
+        DriveSession.Lease lease;try{lease=DriveSession.INSTANCE.lease();}catch(IOException e){clearBrowser();return;}
+        int version=++requestVersion;loading=true;updateControls();message.setText(R.string.drive_loading);
+        listing=network.submit(()->{
+            try {
+                DriveApi.FileEntry target=new DriveApi(GoogleAuthorization.transport(this,lease)).resolve(entry);
+                handler.post(()->{
+                    if(isDestroyed()||version!=requestVersion)return;loading=false;updateControls();
+                    try{lease.requireCurrent();}catch(IOException e){clearBrowser();return;}
+                    if(target.folder)enterFolder(target);
+                    else if(target.previewable())openPreview(target);
+                    else if(target.downloadable)download(target);else message.setText(R.string.drive_unsupported);
+                });
+            }catch(IOException e){handler.post(()->{if(!isDestroyed()&&version==requestVersion){loading=false;updateControls();message.setText(e.getMessage());}});}
+        });
+    }
+    private void openPreview(DriveApi.FileEntry entry) {
+        if(PreviewPolicy.media(entry.previewMime)&&entry.size>32L*1024*1024) {
+            new MaterialAlertDialogBuilder(this).setTitle(R.string.drive_preview).setMessage(getString(R.string.drive_preview_full_media,android.text.format.Formatter.formatFileSize(this,entry.size)))
+                .setNegativeButton(android.R.string.cancel,null).setPositiveButton(R.string.drive_preview,(d,w)->startPreview(entry)).show();return;
+        }
+        startPreview(entry);
+    }
+    private void startPreview(DriveApi.FileEntry entry) {
+        try{startActivity(new Intent(this,FilePreviewActivity.class).putExtra("file",entry.id).putExtra("session",DriveSession.INSTANCE.lease().id()));}catch(IOException e){clearBrowser();}
+    }
 
+    private void requestManagement() {
+        if(editing||authorizing||GoogleAuthorization.revoking.get())return;
+        if(DownloadService.snapshot.active){message.setText(R.string.drive_download_busy);return;}
+        new MaterialAlertDialogBuilder(this).setTitle(R.string.drive_manage_access).setMessage(R.string.drive_manage_explanation)
+            .setNegativeButton(android.R.string.cancel,null).setPositiveButton(R.string.drive_manage_allow,(d,w)->authorize(true)).show();
+    }
+    private void chooseUpload() {
+        if(!managementReady())return;
+        if(DownloadService.snapshot.active){message.setText(R.string.drive_download_busy);return;}
+        try{uploadSession=DriveSession.INSTANCE.lease().id();}catch(IOException e){clearBrowser();return;}
+        uploadParent=folder;
+        if(android.os.Build.VERSION.SDK_INT>=33&&checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED)
+            requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},702);
+        Intent picker=new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE);
+        try{startActivityForResult(picker,703);}catch(RuntimeException e){message.setText(R.string.drive_upload_failed);uploadParent=null;}
+    }
+    private boolean managementReady() {
+        if(!DriveSession.INSTANCE.connected()){clearBrowser();return false;}
+        if(!DriveSession.INSTANCE.writable()){requestManagement();return false;}
+        return !editing&&!loading;
+    }
+    private interface FileEdit { void run(DriveApi api)throws IOException; }
+    private void runEdit(FileEdit operation) {
+        if(!managementReady())return;
+        DriveSession.Lease lease;
+        try{lease=DriveSession.INSTANCE.lease();}catch(DriveSession.AuthorizationRequired e){clearBrowser();return;}
+        boolean accepted=MutationCoordinator.INSTANCE.submit(()->{
+            lease.requireWrite();operation.run(new DriveApi(GoogleAuthorization.transport(getApplicationContext(),lease)));
+        },outcome->handler.post(()->{
+                if(isDestroyed())return;
+                observedMutation=MutationCoordinator.INSTANCE.revision();updateControls();adapter.notifyDataSetChanged();
+                try{lease.requireCurrent();}catch(DriveSession.AuthorizationRequired e){if(DriveSession.INSTANCE.connected())load(false);else clearBrowser();return;}
+                if(outcome!=null)message.setText(outcome);else load(false);
+            }));
+        if(!accepted){updateControls();return;}
+        requestVersion++;if(listing!=null)listing.cancel(true);
+        loading=false;updateControls();adapter.notifyDataSetChanged();message.setText(R.string.drive_editing);
+    }
+    private void editName(DriveApi.FileEntry entry) {
+        if(!managementReady())return;
+        String parent=folder;
+        TextInputLayout field=new TextInputLayout(this);field.setPadding(dp(20),dp(8),dp(20),0);
+        field.setHint(getString(R.string.drive_name));
+        TextInputEditText input=new TextInputEditText(field.getContext());input.setSingleLine(true);input.setMinHeight(dp(48));
+        input.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(255)});
+        if(entry!=null)input.setText(entry.name);field.addView(input);
+        androidx.appcompat.app.AlertDialog dialog=new MaterialAlertDialogBuilder(this).setTitle(entry==null?R.string.drive_new_folder:R.string.drive_rename)
+            .setView(field).setNegativeButton(android.R.string.cancel,null).setPositiveButton(R.string.drive_save,null).create();
+        dialog.setOnShowListener(d->dialog.getButton(-1).setOnClickListener(v->{
+            String name=input.getText()==null?"":input.getText().toString();
+            try{DriveApi.requireName(name);}catch(IOException e){field.setError(e.getMessage());return;}
+            dialog.dismiss();runEdit(api->{if(entry==null)api.createFolder(parent,name);else api.rename(entry.id,name);});
+        }));dialog.show();
+    }
+    private void fileActions(DriveApi.FileEntry entry) {
+        if(!managementReady())return;
+        String[] choices=entry.trashed?new String[]{getString(R.string.drive_restore),getString(R.string.drive_delete_forever)}:new String[]{getString(R.string.drive_rename),getString(entry.starred?R.string.drive_unstar:R.string.drive_star),getString(R.string.drive_trash),getString(R.string.drive_move),getString(R.string.drive_share)};
+        new MaterialAlertDialogBuilder(this).setTitle(entry.name).setItems(choices,(dialog,n)->{
+            if(entry.trashed){
+                if(n==0)runEdit(api->api.trash(entry.id,false));
+                else new MaterialAlertDialogBuilder(this).setTitle(R.string.drive_delete_forever).setMessage(getString(R.string.drive_delete_forever_warning,entry.name))
+                    .setNegativeButton(android.R.string.cancel,null).setPositiveButton(R.string.drive_delete_forever,(a,b)->runEdit(api->api.deletePermanently(entry.id))).show();
+                return;
+            }
+            if(n==0){editName(entry);return;}
+            if(n==1){runEdit(api->api.star(entry.id,!entry.starred));return;}
+            if(n==3){chooseDestination(entry);return;}
+            if(n==4){sharing(entry);return;}
+            new MaterialAlertDialogBuilder(this).setTitle(R.string.drive_trash).setMessage(getString(R.string.drive_trash_confirm,entry.name))
+                .setNegativeButton(android.R.string.cancel,null).setPositiveButton(R.string.drive_trash,(d,w)->runEdit(api->api.trash(entry.id,true))).show();
+        }).show();
+    }
+    private void chooseDestination(DriveApi.FileEntry entry) {
+        if(!managementReady())return;
+        LinearLayout content=column();content.setPadding(dp(20),0,dp(20),0);
+        TextView path=label(getString(R.string.drive_root),16),state=label("",14);
+        Button back=button(R.string.drive_up),next=button(R.string.drive_more),shared=button(R.string.drive_shared_drives);
+        android.widget.ArrayAdapter<String> labels=new android.widget.ArrayAdapter<>(this,android.R.layout.simple_list_item_1);
+        ListView list=new ListView(this);list.setAdapter(labels);
+        content.addView(path);content.addView(back);content.addView(shared);content.addView(state);content.addView(list,new LinearLayout.LayoutParams(-1,dp(240)));content.addView(next);
+        List<DriveApi.FileEntry> folders=new ArrayList<>();Deque<String[]> stack=new ArrayDeque<>();
+        String[] target={"root",getString(R.string.drive_root)},page={""};int[] generation={0};Future<?>[] job={null};
+        androidx.appcompat.app.AlertDialog dialog=new MaterialAlertDialogBuilder(this).setTitle(R.string.drive_move).setView(content)
+            .setNegativeButton(android.R.string.cancel,null).setPositiveButton(R.string.drive_move_here,null).create();
+        class Picker {
+            void load(boolean append) {
+                int version=++generation[0];if(job[0]!=null)job[0].cancel(true);
+                if(!append){folders.clear();labels.clear();page[0]="";}
+                path.setText(target[1]);state.setText(R.string.drive_loading);back.setEnabled(false);next.setEnabled(false);shared.setEnabled(false);list.setEnabled(false);dialog.getButton(-1).setEnabled(false);
+                String parent=target[0],token=page[0];DriveSession.Lease lease;
+                try{lease=DriveSession.INSTANCE.lease();}catch(IOException e){state.setText(e.getMessage());return;}
+                job[0]=network.submit(()->{
+                    try {
+                        DriveApi api=new DriveApi(GoogleAuthorization.transport(DriveActivity.this,lease));
+                        DriveApi.Page result=parent.isEmpty()?api.list("root","",token,DriveApi.View.DRIVES,DriveApi.Sort.NAME):api.folders(parent,token);
+                        handler.post(()->{
+                            if(isDestroyed()||!dialog.isShowing()||version!=generation[0])return;
+                            try{lease.requireCurrent();}catch(IOException e){state.setText(e.getMessage());return;}
+                            folders.addAll(result.files);for(DriveApi.FileEntry file:result.files)labels.add(file.name);
+                            page[0]=result.nextToken;state.setText(folders.isEmpty()?getString(R.string.drive_no_folders):getString(R.string.drive_choose_folder));
+                            back.setEnabled(!stack.isEmpty());next.setEnabled(!page[0].isEmpty());shared.setEnabled(!parent.isEmpty());list.setEnabled(true);dialog.getButton(-1).setEnabled(!parent.isEmpty()&&!entry.id.equals(parent));
+                        });
+                    }catch(IOException e){handler.post(()->{if(dialog.isShowing()&&version==generation[0]){state.setText(e.getMessage());back.setEnabled(!stack.isEmpty());}});}
+                });
+            }
+        }
+        Picker picker=new Picker();
+        list.setOnItemClickListener((p,v,n,id)->{stack.push(target.clone());target[0]=folders.get(n).id;target[1]=folders.get(n).name;picker.load(false);});
+        back.setOnClickListener(v->{if(!stack.isEmpty()){String[] old=stack.pop();target[0]=old[0];target[1]=old[1];picker.load(false);}});
+        next.setOnClickListener(v->picker.load(true));
+        shared.setOnClickListener(v->{stack.push(target.clone());target[0]="";target[1]=getString(R.string.drive_shared_drives);picker.load(false);});
+        dialog.setOnDismissListener(d->{generation[0]++;if(job[0]!=null)job[0].cancel(true);});
+        dialog.setOnShowListener(d->{dialog.getButton(-1).setOnClickListener(v->{String destination=target[0];dialog.dismiss();runEdit(api->api.move(entry.id,destination));});picker.load(false);});
+        dialog.show();
+    }
+    private void sharing(DriveApi.FileEntry entry) {
+        String[] options={getString(R.string.drive_copy_link),getString(R.string.drive_share_person),getString(R.string.drive_share_anyone),getString(R.string.drive_permissions)};
+        new MaterialAlertDialogBuilder(this).setTitle(R.string.drive_share).setItems(options,(d,n)->{
+            if(n==0) {
+                try{String link=DriveApi.sharingLink(entry);((android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(android.content.ClipData.newPlainText(entry.name,link));message.setText(R.string.drive_link_copied);}
+                catch(IOException e){message.setText(e.getMessage());}return;
+            }
+            if(n==1){sharePerson(entry);return;}
+            if(n==2){new MaterialAlertDialogBuilder(this).setTitle(R.string.drive_share_anyone).setMessage(R.string.drive_share_public_warning)
+                .setNegativeButton(android.R.string.cancel,null).setPositiveButton(R.string.drive_share_anyone,(a,b)->runEdit(api->api.share(entry.id,null,false,true))).show();return;}
+            showPermissions(entry);
+        }).show();
+    }
+    private void sharePerson(DriveApi.FileEntry entry) {
+        LinearLayout content=column();content.setPadding(dp(20),0,dp(20),0);
+        TextInputLayout field=new TextInputLayout(this);field.setHint(getString(R.string.drive_email));
+        TextInputEditText email=new TextInputEditText(field.getContext());email.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);field.addView(email);content.addView(field);
+        email.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(254)});
+        android.widget.CheckBox writer=new android.widget.CheckBox(this);writer.setText(R.string.drive_editor);content.addView(writer);
+        content.addView(label(getString(R.string.drive_share_notification),14));
+        androidx.appcompat.app.AlertDialog dialog=new MaterialAlertDialogBuilder(this).setTitle(R.string.drive_share_person).setView(content).setNegativeButton(android.R.string.cancel,null).setPositiveButton(R.string.drive_save,null).create();
+        dialog.setOnShowListener(d->dialog.getButton(-1).setOnClickListener(v->{String address=email.getText()==null?"":email.getText().toString().trim();
+            try{DriveApi.permissionJson(address,writer.isChecked(),false);}catch(IOException e){field.setError(e.getMessage());return;}
+            boolean editable=writer.isChecked();dialog.dismiss();runEdit(api->api.share(entry.id,address,editable,false));
+        }));dialog.show();
+    }
+    private void showPermissions(DriveApi.FileEntry entry) {
+        if(loading||editing)return;if(!DriveSession.INSTANCE.connected()){clearBrowser();return;}
+        DriveSession.Lease lease;try{lease=DriveSession.INSTANCE.lease();}catch(IOException e){clearBrowser();return;}
+        loading=true;updateControls();message.setText(R.string.drive_loading);
+        int version=++requestVersion;
+        listing=network.submit(()->{
+            try {
+                List<DriveApi.Permission> result=new DriveApi(GoogleAuthorization.transport(this,lease)).permissions(entry.id);
+                handler.post(()->{
+                    if(isDestroyed()||version!=requestVersion)return;loading=false;updateControls();
+                    try{lease.requireCurrent();}catch(IOException e){clearBrowser();return;}
+                    String[] labels=new String[result.size()];for(int i=0;i<labels.length;i++)labels[i]=result.get(i).name+" · "+result.get(i).role;
+                    message.setText(R.string.drive_permissions);
+                    new MaterialAlertDialogBuilder(this).setTitle(R.string.drive_permissions).setItems(labels,(d,n)->{
+                        DriveApi.Permission permission=result.get(n);
+                        if(!permission.removable){message.setText(R.string.drive_permission_inherited);return;}
+                        new MaterialAlertDialogBuilder(this).setTitle(R.string.drive_remove_access).setMessage(getString(R.string.drive_remove_access_confirm,permission.name))
+                            .setNegativeButton(android.R.string.cancel,null).setPositiveButton(R.string.drive_remove_access,(a,b)->runEdit(api->api.removePermission(entry.id,permission.id))).show();
+                    }).setNegativeButton(android.R.string.cancel,null).show();
+                });
+            }catch(IOException e){handler.post(()->{if(!isDestroyed()&&version==requestVersion){loading=false;updateControls();message.setText(e.getMessage());}});}
+        });
+    }
+
+    private void copyLink(DriveApi.FileEntry entry) {
+        try{String link=DriveApi.sharingLink(entry);((android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(android.content.ClipData.newPlainText(entry.name,link));message.setText(R.string.drive_link_copied);}
+        catch(IOException error){message.setText(error.getMessage());}
+    }
+    private boolean rememberEntry(DriveApi.FileEntry entry) {
+        try{DriveSession.INSTANCE.lease().rememberKey(entry.id,entry.resourceKey);return true;}
+        catch(IOException e){message.setText(e.getMessage());return false;}
+    }
+    private void fileDetails(DriveApi.FileEntry entry) {
+        new MaterialAlertDialogBuilder(this).setTitle(entry.name)
+            .setMessage(getString(R.string.drive_details_body,entry.mime,entry.size<0?getString(R.string.drive_size_unknown):android.text.format.Formatter.formatFileSize(this,entry.size),entry.modified.isEmpty()?getString(R.string.drive_size_unknown):entry.modified))
+            .setPositiveButton(android.R.string.ok,null).show();
+    }
     private final class FileAdapter extends BaseAdapter {
-        @Override public int getCount() { return files.size(); }
-        @Override public Object getItem(int n) { return files.get(n); }
-        @Override public long getItemId(int n) { return n; }
-        @Override public View getView(int n, View old, ViewGroup parent) {
-            DriveApi.FileEntry entry = files.get(n);
-            LinearLayout row = column(); row.setPadding(0,dp(12),0,dp(12));
-            TextView name = label(entry.name,16); name.setMaxLines(2); name.setEllipsize(TextUtils.TruncateAt.END);
-            row.addView(name);
-            String detail = entry.folder ? getString(R.string.drive_folder) : !entry.exportMime.isEmpty() && entry.downloadable ? getString(R.string.drive_export_format,entry.exportSuffix) : entry.downloadable
-                ? android.text.format.Formatter.formatFileSize(DriveActivity.this,entry.size) : getString(R.string.drive_unsupported);
-            TextView subtitle = label(detail,14); row.addView(subtitle);
-            Button action = button(entry.folder ? R.string.drive_open_folder : R.string.drive_download);
-            action.setContentDescription(getString(entry.folder ? R.string.drive_open_folder_named : R.string.drive_download_named,entry.name));
-            action.setEnabled(!loading && (entry.folder || entry.downloadable && !DownloadService.snapshot.active));
-            action.setOnClickListener(v -> { if (entry.folder) enterFolder(entry); else download(entry); });
-            if(!entry.exportMime.isEmpty() && entry.downloadable)action.setText(R.string.drive_export);
-            row.addView(action,new LinearLayout.LayoutParams(-1,-2));
-            Button details=button(R.string.drive_details);
-            details.setOnClickListener(v -> new MaterialAlertDialogBuilder(DriveActivity.this).setTitle(entry.name)
-                .setMessage(getString(R.string.drive_details_body,entry.mime,entry.size<0?getString(R.string.drive_size_unknown):android.text.format.Formatter.formatFileSize(DriveActivity.this,entry.size),entry.modified.isEmpty()?getString(R.string.drive_size_unknown):entry.modified))
-                .setPositiveButton(android.R.string.ok,null).show());
-            row.addView(details,new LinearLayout.LayoutParams(-1,-2));
-            return row;
+        private final class Row {
+            final LinearLayout root=column();final TextView name=label("",16),detail=label("",14);
+            final Button action=button(R.string.drive_download),more=button(R.string.drive_more_actions);
+            Row(){root.setPadding(0,dp(12),0,dp(12));name.setMaxLines(2);name.setEllipsize(TextUtils.TruncateAt.END);root.addView(name);root.addView(detail);
+                LinearLayout actions=new LinearLayout(DriveActivity.this);actions.addView(action,new LinearLayout.LayoutParams(0,-2,2));
+                LinearLayout.LayoutParams extra=new LinearLayout.LayoutParams(0,-2,1);extra.setMarginStart(dp(8));actions.addView(more,extra);root.addView(actions);root.setTag(this);}
+        }
+        @Override public int getCount(){return files.size();}
+        @Override public Object getItem(int n){return files.get(n);}
+        @Override public long getItemId(int n){return n;}
+        @Override public View getView(int n,View old,ViewGroup parent) {
+            DriveApi.FileEntry entry=files.get(n);Row row=old!=null&&old.getTag() instanceof FileAdapter.Row?(Row)old.getTag():new Row();
+            row.name.setText(entry.name);
+            boolean previewable=entry.previewable();
+            String detail=entry.shortcut?getString(R.string.drive_shortcut):entry.folder?getString(R.string.drive_folder):!entry.exportMime.isEmpty()&&entry.downloadable?getString(R.string.drive_export_format,entry.exportSuffix):entry.downloadable?android.text.format.Formatter.formatFileSize(DriveActivity.this,entry.size):getString(R.string.drive_unsupported);
+            row.detail.setText(detail);
+            row.action.setText(entry.shortcut?R.string.drive_open_shortcut:entry.folder?R.string.drive_open_folder:previewable?R.string.drive_preview:!entry.exportMime.isEmpty()&&entry.downloadable?R.string.drive_export:R.string.drive_download);
+            row.action.setContentDescription(getString(R.string.drive_action_named,row.action.getText(),entry.name));
+            row.action.setEnabled(!loading&&!editing&&(entry.folder||entry.shortcut||previewable||entry.downloadable&&!DownloadService.snapshot.active));
+            row.action.setOnClickListener(v->{if(!rememberEntry(entry))return;if(entry.shortcut)openShortcut(entry);else if(entry.folder)enterFolder(entry);else if(previewable)openPreview(entry);else download(entry);});
+            row.more.setContentDescription(getString(R.string.drive_action_named,getString(R.string.drive_more_actions),entry.name));row.more.setEnabled(!loading&&!editing);
+            row.more.setOnClickListener(v->{
+                androidx.appcompat.widget.PopupMenu popup=new androidx.appcompat.widget.PopupMenu(DriveActivity.this,row.more);
+                popup.getMenu().add(0,1,0,R.string.drive_details);
+                if(entry.downloadable)popup.getMenu().add(0,2,1,entry.exportMime.isEmpty()?R.string.drive_download:R.string.drive_export).setEnabled(!DownloadService.snapshot.active);
+                if(!entry.trashed)popup.getMenu().add(0,3,2,R.string.drive_copy_link);
+                if(currentView!=DriveApi.View.DRIVES)popup.getMenu().add(0,4,3,R.string.drive_file_actions);
+                if(!entry.trashed)popup.getMenu().add(0,5,4,R.string.drive_share);
+                popup.setOnMenuItemClickListener(item->{if(!rememberEntry(entry))return true;switch(item.getItemId()) {
+                    case 1:fileDetails(entry);break;case 2:download(entry);break;case 3:copyLink(entry);break;case 4:fileActions(entry);break;case 5:sharing(entry);break;default:return false;
+                }return true;});popup.show();
+            });return row.root;
         }
     }
 
@@ -447,10 +720,18 @@ public final class DriveActivity extends AppCompatActivity {
         menu.add(0,1,0,R.string.drive_revoke);
         menu.add(0,2,1,R.string.licenses);
         menu.add(0,3,2,R.string.diagnostics_title);
+        menu.add(0,4,3,R.string.drive_new_folder);
+        menu.add(0,5,4,R.string.drive_manage_access);
+        menu.add(0,6,5,R.string.drive_refresh);
+        menu.add(0,7,6,R.string.drive_upload);
+        menu.add(0,8,7,R.string.drive_privacy);
         return true;
     }
     @Override public boolean onPrepareOptionsMenu(Menu menu) {
         menu.findItem(1).setEnabled(!authorizing && !GoogleAuthorization.revoking.get());
+        for(int id:new int[]{4,5,6})menu.findItem(id).setEnabled(DriveSession.INSTANCE.connected()&&!loading&&!editing&&!authorizing);
+        menu.findItem(4).setEnabled(DriveSession.INSTANCE.connected()&&!loading&&!editing&&currentView==DriveApi.View.FOLDER);
+        menu.findItem(7).setEnabled(DriveSession.INSTANCE.connected()&&!loading&&!editing&&currentView==DriveApi.View.FOLDER&&!DownloadService.snapshot.active);
         return super.onPrepareOptionsMenu(menu);
     }
     @Override public boolean onOptionsItemSelected(MenuItem item) {
@@ -462,14 +743,22 @@ public final class DriveActivity extends AppCompatActivity {
         }
         if (item.getItemId() == 2) { showLicenses(); return true; }
         if (item.getItemId() == 3) { showDiagnostics(); return true; }
+        if(item.getItemId()==4){editName(null);return true;}
+        if(item.getItemId()==5){requestManagement();return true;}
+        if(item.getItemId()==6){load(false);return true;}
+        if(item.getItemId()==7){chooseUpload();return true;}
+        if(item.getItemId()==8){showPrivacy();return true;}
         return super.onOptionsItemSelected(item);
     }
     private void revoke() {
+        if(DriveSession.INSTANCE.scopes().isEmpty()){message.setText(R.string.drive_revoke_connect);return;}
         if (!GoogleAuthorization.revoking.compareAndSet(false,true)) return;
+        List<Scope> revokeScopes=new ArrayList<>();for(String scope:DriveSession.INSTANCE.scopes())revokeScopes.add(new Scope(scope));
+        if(revokeScopes.isEmpty())revokeScopes.add(new Scope(DriveApi.READONLY_SCOPE));
         disconnect();
         message.setText(R.string.drive_revoking); updateControls();
         Identity.getAuthorizationClient(this).revokeAccess(RevokeAccessRequest.builder()
-            .setScopes(Collections.singletonList(new Scope(DriveApi.READONLY_SCOPE))).build())
+            .setScopes(revokeScopes).build())
             .addOnCompleteListener(result -> {
                 GoogleAuthorization.lastRevokeSucceeded = result.isSuccessful();
                 GoogleAuthorization.revoking.set(false);
@@ -529,7 +818,31 @@ public final class DriveActivity extends AppCompatActivity {
             } catch (IOException error) { handler.post(() -> { if (!isDestroyed()) message.setText(R.string.licenses_unavailable); }); }
         },"gdirect-notices").start();
     }
+    private void showPrivacy() {
+        new Thread(()->{
+            try(java.io.InputStream in=getAssets().open("privacy-policy.txt")) {
+                java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();byte[] buffer=new byte[4096];int n;
+                while((n=in.read(buffer))!=-1){if(bytes.size()+n>65536)throw new IOException("Privacy text too large");bytes.write(buffer,0,n);}
+                String content=bytes.toString("UTF-8");
+                handler.post(()->{if(!isDestroyed()){
+                    TextView view=label(content,16);view.setTextIsSelectable(true);view.setPadding(dp(20),dp(12),dp(20),dp(12));
+                    android.widget.ScrollView scroll=new android.widget.ScrollView(this);scroll.addView(view);
+                    new MaterialAlertDialogBuilder(this).setTitle(R.string.drive_privacy).setView(scroll).setPositiveButton(android.R.string.ok,null).show();
+                }});
+            }catch(IOException e){handler.post(()->{if(!isDestroyed())message.setText(R.string.drive_privacy_unavailable);});}
+        },"privacy-text").start();
+    }
     @Override protected void onSaveInstanceState(Bundle state) {
+        state.putBoolean("management_requested",managementRequested);
+        state.putString("upload_parent",uploadParent);state.putLong("upload_session",uploadSession);
+        try {
+            if(DriveSession.INSTANCE.connected()) {
+                org.json.JSONArray history=new org.json.JSONArray();
+                for(String[] entry:parents)history.put(new org.json.JSONArray().put(entry[0]).put(entry[1].substring(0,Math.min(entry[1].length(),512))).put(entry[2]).put(entry[3]));
+                org.json.JSONObject browser=new org.json.JSONObject().put("folder",folder).put("name",folderName.substring(0,Math.min(folderName.length(),512))).put("view",currentView.name()).put("sort",currentSort.name()).put("drive",currentDrive).put("query",activeSearch).put("parents",history);
+                state.putLong("browser_session",DriveSession.INSTANCE.lease().id());state.putString("browser_state",browser.toString());
+            }
+        }catch(IOException|org.json.JSONException ignored){}
         state.putBoolean("waiting_resolution",waitingResolution);
         state.putString("authorization_phase",authorizationPhase);
         if (lastActivityResult != null) state.putInt("last_activity_result",lastActivityResult);

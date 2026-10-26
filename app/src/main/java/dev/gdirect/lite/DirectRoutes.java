@@ -96,11 +96,13 @@ final class DirectRoutes {
             if (cached != null && cached.host.equals(host) && publicIpv4(cached.ip)
                     && cached.checkedAt <= now && now - cached.checkedAt < MAX_AGE
                     && !failed.contains(cached.key()) && !recentlyRejected(cached)) {
+                if (generation != epoch) throw new IOException("网络已切换，请重新检测直连线路");
                 observer.update(description(cached, true));
                 return cached;
             }
+            if (generation != epoch) throw new IOException("网络已切换，请重新检测直连线路");
             Long recent = failures.get(host);
-            if (recent != null && now - recent < 10000)
+            if (recent != null && System.nanoTime() - recent < TimeUnit.SECONDS.toNanos(10))
                 throw new IOException("刚才未找到可用直连线路；请稍后重试或点重新检测直连");
             long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(budgetMillis);
             LinkedHashSet<String> ips = new LinkedHashSet<>();
@@ -148,7 +150,7 @@ final class DirectRoutes {
                 String message = "未找到 " + host + " 的可用直连线路（已检测 " + checked + "/" + jobs.size()
                     + "）。可重新检测，或在网络设置中选择系统网络；VPN/TUN 可能接管直连连接。";
                 observer.update(message);
-                failures.put(host, System.currentTimeMillis());
+                failures.put(host, System.nanoTime());
                 throw new IOException(message);
             } catch (InterruptedException error) {
                 Thread.currentThread().interrupt();
@@ -164,7 +166,7 @@ final class DirectRoutes {
     void reset() { synchronized (cacheLock) { generation++; store.clear(); failures.clear(); rejected.clear(); } }
     void reject(Route route) {
         synchronized (cacheLock) {
-            rejected.put(route.host + "/" + route.key(),System.currentTimeMillis());
+            rejected.put(route.host + "/" + route.key(),System.nanoTime());
             Route cached = store.load(route.host);
             if (cached != null && cached.key().equals(route.key())) store.remove(route.host);
         }
@@ -173,7 +175,7 @@ final class DirectRoutes {
         String key = route.host + "/" + route.key();
         Long time = rejected.get(key);
         if (time == null) return false;
-        if (System.currentTimeMillis() - time < 30000) return true;
+        if (System.nanoTime() - time < TimeUnit.SECONDS.toNanos(30)) return true;
         rejected.remove(key,time); return false;
     }
     private static InterruptedIOException interrupted() { return new InterruptedIOException("直连检测已取消"); }

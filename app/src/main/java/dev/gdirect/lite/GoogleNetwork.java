@@ -4,6 +4,8 @@ import android.app.Application;
 import android.content.SharedPreferences;
 import android.net.ConnectivityManager;
 import android.net.Network;
+import android.net.DnsResolver;
+import android.os.CancellationSignal;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.URL;
@@ -12,9 +14,7 @@ import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.Future;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import javax.net.ssl.HttpsURLConnection;
 import okhttp3.OkHttpClient;
@@ -29,12 +29,12 @@ public final class GoogleNetwork extends Application {
     private DirectRoutes routes;
     private final OkHttpClient base = new OkHttpClient.Builder()
         .followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false).build();
-    private final ThreadPoolExecutor dns = new ThreadPoolExecutor(2, 2, 10, TimeUnit.SECONDS,
-        new ArrayBlockingQueue<>(2), task -> { Thread thread = new Thread(task,"direct-dns"); thread.setDaemon(true); return thread; });
     private volatile String summary = "自动直连：浏览或下载时自动检测，无需手工填写 IP";
 
     @Override public void onCreate() {
         super.onCreate(); instance = this;
+        java.io.File[] abandonedPreviews=getCacheDir().listFiles((dir,name)->name.startsWith("drive-preview-"));
+        if(abandonedPreviews!=null)for(java.io.File file:abandonedPreviews)file.delete();
         preferences = getSharedPreferences("direct-network", MODE_PRIVATE);
         routes = new DirectRoutes(this::candidates, this::probe, new DirectRoutes.Store() {
             @Override public DirectRoutes.Route load(String host) {
@@ -102,18 +102,30 @@ public final class GoogleNetwork extends Application {
                 if (DirectRoutes.publicIpv4(value)) result.add(value);
             }
         }
+        // Android's asynchronous resolver supports actual cancellation; an interrupted
+        // getAllByName can otherwise occupy every DNS worker after a network outage.
         List<Future<List<String>>> lookups = new ArrayList<>();
+        List<CancellationSignal> cancellations = new ArrayList<>();
         List<String> freshDns = new ArrayList<>();
         for (String name : new String[]{host,"www.googleapis.com","drive.usercontent.google.com"}) {
+            java.util.concurrent.CompletableFuture<List<String>> lookup = new java.util.concurrent.CompletableFuture<>();
+            CancellationSignal cancellation = new CancellationSignal();
+            lookups.add(lookup); cancellations.add(cancellation);
             try {
-                lookups.add(dns.submit(() -> {
-                    List<String> ips = new ArrayList<>();
-                    for (InetAddress address : InetAddress.getAllByName(name)) {
-                        if (address.getAddress().length == 4 && DirectRoutes.publicIpv4(address.getHostAddress())) ips.add(address.getHostAddress());
-                    }
-                    return ips;
-                }));
-            } catch (java.util.concurrent.RejectedExecutionException ignored) { /* Already have bounded DNS work. */ }
+                DnsResolver.getInstance().query(null,name,DnsResolver.TYPE_A,DnsResolver.FLAG_EMPTY,
+                    Runnable::run,cancellation,new DnsResolver.Callback<List<InetAddress>>() {
+                        @Override public void onAnswer(List<InetAddress> addresses,int rcode) {
+                            List<String> ips = new ArrayList<>();
+                            for (InetAddress address : addresses)
+                                if (address.getAddress().length==4 && DirectRoutes.publicIpv4(address.getHostAddress()))
+                                    ips.add(address.getHostAddress());
+                            lookup.complete(ips);
+                        }
+                        @Override public void onError(DnsResolver.DnsException error) {
+                            lookup.complete(Collections.emptyList());
+                        }
+                    });
+            } catch (RuntimeException unavailable) { lookup.complete(Collections.emptyList()); }
         }
         long end = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(1200);
         try {
@@ -129,7 +141,10 @@ public final class GoogleNetwork extends Application {
             }
         } catch (InterruptedException error) {
             Thread.currentThread().interrupt(); throw new java.io.InterruptedIOException("直连检测已取消");
-        } finally { for (Future<List<String>> lookup : lookups) lookup.cancel(true); }
+        } finally {
+            for (CancellationSignal cancellation : cancellations) cancellation.cancel();
+            for (Future<List<String>> lookup : lookups) lookup.cancel(true);
+        }
         return DirectRoutes.candidates(freshDns,new ArrayList<>(result));
     }
 
@@ -165,7 +180,7 @@ public final class GoogleNetwork extends Application {
             OkHttpClient manual = GoogleHttp.direct(base,route);
             return GoogleHttp.open(url, () -> manual, () -> { }, guard);
         }
-        if (systemNetwork()) return (HttpsURLConnection) url.openConnection();
+        if (systemNetwork()) return GoogleHttp.open(url,()->base,()->{},guard);
         Set<String> failed = new java.util.HashSet<>();
         DirectRoutes.Route[] selected = new DirectRoutes.Route[1];
         return GoogleHttp.open(url, () -> {
