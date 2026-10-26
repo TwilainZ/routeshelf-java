@@ -1,4 +1,5 @@
 <resources>
+    <string name="connection_settings">连接设置与线路状态</string>
     <string name="drive_preview_full_media">预览会先读取完整文件（%1$s），并临时保存到应用缓存。继续预览？</string>
     <string name="drive_revoke_connect">请先连接要撤销的 Google 账号，再撤销当前会话授权；也可直接到 Google 账号的第三方访问设置中移除应用。</string>
     <string name="drive_folder_depth">浏览路径超过 100 层，请返回上级或使用搜索。</string>

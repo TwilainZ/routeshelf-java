@@ -6,6 +6,8 @@
         <item name="colorOnPrimaryContainer">#DDE5FF</item>
         <item name="colorSecondary">#BBC7E0</item>
         <item name="colorOnSecondary">#253149</item>
+        <item name="colorSurfaceContainer">#202938</item>
+        <item name="colorOutlineVariant">#475367</item>
         <item name="colorSurface">#141B29</item>
         <item name="colorOnSurface">#E1E7F3</item>
         <item name="colorOnSurfaceVariant">#BBC5D8</item>
