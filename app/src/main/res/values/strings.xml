@@ -50,6 +50,12 @@
     <string name="drive_rename">重命名</string>
     <string name="drive_name">名称</string>
     <string name="drive_save">保存</string>
+    <string name="drive_transfer_progress">%1$d%% · %2$s / %3$s</string>
+    <string name="drive_transfer_details">查看传输与已下载文件</string>
+    <string name="drive_cancel_transfer">取消当前传输</string>
+    <string name="drive_cancel_failed">无法停止传输，请打开传输页面重试。</string>
+    <string name="drive_retry_list">重新加载列表</string>
+    <string name="drive_retry_more">重试加载更多</string>
     <string name="drive_refresh">刷新文件列表</string>
     <string name="drive_star">添加星标</string>
     <string name="drive_unstar">取消星标</string>

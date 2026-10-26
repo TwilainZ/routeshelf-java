@@ -20,8 +20,8 @@ public final class MutationCoordinatorTest {
     @Test public void failedWriteReleasesGateAndPublishesUncertaintyWithoutAutomaticReplay()throws Exception {
         try(MutationCoordinator coordinator=new MutationCoordinator()) {
             CountDownLatch done=new CountDownLatch(1);AtomicInteger calls=new AtomicInteger();
-            coordinator.submit(()->{calls.incrementAndGet();throw new java.net.SocketException("fixture uncertainty");},error->done.countDown());
-            assertTrue(done.await(1,TimeUnit.SECONDS));assertFalse(coordinator.busy());assertEquals(1,calls.get());assertEquals("fixture uncertainty",coordinator.error());
+            coordinator.submit(123,()->{calls.incrementAndGet();throw new java.net.SocketException("fixture uncertainty");},error->done.countDown());
+            assertTrue(done.await(1,TimeUnit.SECONDS));assertFalse(coordinator.busy());assertEquals(1,calls.get());assertEquals("fixture uncertainty",coordinator.error());assertEquals(123,coordinator.owner());
         }
     }
 }

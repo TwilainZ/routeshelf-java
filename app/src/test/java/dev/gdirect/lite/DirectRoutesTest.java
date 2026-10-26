@@ -111,6 +111,17 @@ public final class DirectRoutesTest {
         assertThrows(IOException.class,()->selector.get().select(HOST,Collections.emptySet()));
     }
 
+    @Test public void pollutedSystemDnsCannotStarveEncryptedAnswersOrHistoricalHints() {
+        java.util.List<String> system=new java.util.ArrayList<>(),encrypted=new java.util.ArrayList<>(),history=new java.util.ArrayList<>();
+        for(int i=1;i<=20;i++){system.add("9.9.9."+i);encrypted.add("8.8.4."+i);history.add("8.8.8."+i);}
+        java.util.List<String> all=DirectRoutes.candidates(system,encrypted,history);
+        assertEquals(16,all.size());assertTrue(all.contains(system.get(0)));assertTrue(all.contains(encrypted.get(0)));assertTrue(all.contains(history.get(0)));
+        DirectRoutes routes=new DirectRoutes(host->DirectRoutes.candidates(system,encrypted,Collections.emptyList()),route->{
+            if(!route.ip.equals(encrypted.get(0)))throw new IOException("polluted fixture");
+        },new Memory(),message->{});
+        try{assertEquals(encrypted.get(0),routes.select(HOST,Collections.emptySet()).ip);}catch(IOException e){throw new AssertionError(e);}
+    }
+
     @Test public void staleHistoryCannotExcludeFreshDnsAndDnsCannotExcludeBootstrapHints() {
         java.util.List<String> history = new java.util.ArrayList<>(), fresh = new java.util.ArrayList<>();
         for (int i = 1; i <= 20; i++) { history.add("8.8.8." + i); fresh.add("8.8.4." + i); }

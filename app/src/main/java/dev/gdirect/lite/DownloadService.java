@@ -82,7 +82,8 @@ public final class DownloadService extends Service {
             this.active = active; this.finished = finished; this.savedUri = savedUri; this.mime = mime;
         }
     }
-    static volatile Snapshot snapshot = new Snapshot("可以开始下载公开的 Google Drive 文件。", 0, -1, 0, false, false, null, null);
+    static final Snapshot IDLE = new Snapshot("可以开始下载公开的 Google Drive 文件。", 0, -1, 0, false, false, null, null);
+    static volatile Snapshot snapshot = IDLE;
 
     @Override public IBinder onBind(Intent intent) { return null; }
     @Override public void onCreate() {

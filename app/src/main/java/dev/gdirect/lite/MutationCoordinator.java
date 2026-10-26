@@ -14,11 +14,14 @@ final class MutationCoordinator implements AutoCloseable {
     private final AtomicBoolean running=new AtomicBoolean();
     private final AtomicLong revision=new AtomicLong();
     private volatile String error;
+    private volatile long owner=-1;
     private final ExecutorService worker=Executors.newSingleThreadExecutor(task->{Thread t=new Thread(task,"drive-metadata");t.setDaemon(true);return t;});
     boolean busy(){return running.get();}
     long revision(){return revision.get();}
     String error(){return error;}
-    boolean submit(Work work,Completion completion) {
+    long owner(){return owner;}
+    boolean submit(Work work,Completion completion) {return submit(-1,work,completion);}
+    boolean submit(long session,Work work,Completion completion) {
         if(!running.compareAndSet(false,true))return false;
         error=null;
         try {
@@ -26,7 +29,7 @@ final class MutationCoordinator implements AutoCloseable {
                 String result=null;
                 try{work.run();}catch(IOException e){result=e.getMessage();if(result==null)result="文件操作未确认，请刷新列表核对";}
                 catch(RuntimeException e){result="文件操作未确认，请刷新列表核对";}
-                finally{error=result;revision.incrementAndGet();running.set(false);}
+                finally{owner=session;error=result;revision.incrementAndGet();running.set(false);}
                 completion.done(result);
             });
         }catch(RuntimeException e){running.set(false);throw e;}

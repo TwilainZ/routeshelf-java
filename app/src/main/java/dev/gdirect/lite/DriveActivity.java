@@ -47,7 +47,8 @@ import java.util.concurrent.Future;
 public final class DriveActivity extends AppCompatActivity {
     private static final int AUTHORIZE = 701;
     private final ExecutorService network = Executors.newSingleThreadExecutor();
-    private final List<DriveApi.FileEntry> files = new ArrayList<>();
+    private final DriveListing browser = new DriveListing();
+    private final List<DriveApi.FileEntry> files = browser.files;
     private final Deque<String[]> parents = new ArrayDeque<>();
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final FileAdapter adapter = new FileAdapter();
@@ -60,8 +61,8 @@ public final class DriveActivity extends AppCompatActivity {
     private DriveApi.View currentView=DriveApi.View.FOLDER;
     private DriveApi.Sort currentSort=DriveApi.Sort.NAME;
     private String currentDrive="";
-    private Button connect, disconnect, find, more, up;
-    private ProgressBar loadingIndicator;
+    private Button connect, disconnect, find, more, up, retry, transferDetails, cancelTransfer;
+    private ProgressBar loadingIndicator, transferProgress;
     private Future<?> listing;
     private String folder = "root", folderName, nextPage = "";
     private String activeSearch = "";
@@ -69,7 +70,7 @@ public final class DriveActivity extends AppCompatActivity {
     private Integer lastActivityResult, lastSdkStatus;
     private String authorizationPhase = "not-requested";
     private boolean loading, authorizing, waitingResolution, wasConnected, transferActive, wasRevoking;
-    private boolean editing;
+    private boolean editing,listingFailed,retryAppend,refreshAfterTransfer;
     private boolean managementRequested;
     private long observedMutation=MutationCoordinator.INSTANCE.revision();
     private String uploadParent;
@@ -78,7 +79,13 @@ public final class DriveActivity extends AppCompatActivity {
         @Override public void run() {
             if(editing!=MutationCoordinator.INSTANCE.busy())updateControls();
             if(observedMutation!=MutationCoordinator.INSTANCE.revision()&&!loading&&!editing&&DriveSession.INSTANCE.connected()) {
-                observedMutation=MutationCoordinator.INSTANCE.revision();load(false);
+                observedMutation=MutationCoordinator.INSTANCE.revision();
+                try {
+                    if(DriveSession.INSTANCE.lease().id()==MutationCoordinator.INSTANCE.owner()) {
+                        String error=MutationCoordinator.INSTANCE.error();
+                        if(error==null)load(false);else{message.setText(error);listingFailed=true;retryAppend=false;updateControls();}
+                    }
+                }catch(DriveSession.AuthorizationRequired expired){clearBrowser();}
             }
             networkStatus.setText(GoogleNetwork.get().summary());
             if (wasConnected && !DriveSession.INSTANCE.connected()) clearBrowser();
@@ -87,7 +94,21 @@ public final class DriveActivity extends AppCompatActivity {
                 updateControls();
             }
             DownloadService.Snapshot s = DownloadService.snapshot;
-            transfer.setText(s.active || s.finished ? s.text : "");
+            boolean hasTransfer=s!=DownloadService.IDLE;
+            int percent=s.total>0?(int)Math.max(0,Math.min(100,s.done/(double)s.total*100)):0;
+            String amount=s.active&&s.total>0?getString(R.string.drive_transfer_progress,percent,
+                android.text.format.Formatter.formatShortFileSize(DriveActivity.this,s.done),
+                android.text.format.Formatter.formatShortFileSize(DriveActivity.this,s.total)):"";
+            transfer.setText(hasTransfer?s.text+(amount.isEmpty()?"":"\n"+amount):"");
+            transfer.setVisibility(hasTransfer?View.VISIBLE:View.GONE);
+            transferProgress.setVisibility(s.active?View.VISIBLE:View.GONE);
+            transferProgress.setIndeterminate(s.active&&s.total<=0);
+            transferProgress.setContentDescription(amount.isEmpty()?s.text:amount);
+            if(s.total>0)transferProgress.setProgress((int)Math.max(0,Math.min(1000,s.done/(double)s.total*1000)));
+            transferDetails.setVisibility(hasTransfer?View.VISIBLE:View.GONE);
+            cancelTransfer.setVisibility(s.active?View.VISIBLE:View.GONE);
+            if(transferActive&&!s.active)refreshAfterTransfer=true;
+            if(refreshAfterTransfer&&!loading&&!editing&&DriveSession.INSTANCE.connected()) {refreshAfterTransfer=false;load(false);}
             if (transferActive != s.active) { transferActive = s.active; adapter.notifyDataSetChanged(); }
             handler.postDelayed(this, 500);
         }
@@ -120,6 +141,7 @@ public final class DriveActivity extends AppCompatActivity {
             if (saved.containsKey("last_sdk_status")) lastSdkStatus = saved.getInt("last_sdk_status");
             try {
                 if(DriveSession.INSTANCE.connected()&&saved.getLong("browser_session",-1)==DriveSession.INSTANCE.lease().id()) {
+                    observedMutation=saved.getLong("mutation_revision",observedMutation);
                     org.json.JSONObject state=new org.json.JSONObject(saved.getString("browser_state","{}"));
                     folder=DriveApi.requireId(state.optString("folder","root"));folderName=state.optString("name",folderName);
                     currentView=DriveApi.View.valueOf(state.optString("view","FOLDER"));currentSort=DriveApi.Sort.valueOf(state.optString("sort","NAME"));
@@ -156,7 +178,8 @@ public final class DriveActivity extends AppCompatActivity {
         }
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override public void handleOnBackPressed() {
-                if (!parents.isEmpty()) goUp();
+                if (!activeSearch.isEmpty()) clearSearch();
+                else if (!parents.isEmpty()) goUp();
                 else { setEnabled(false); getOnBackPressedDispatcher().onBackPressed(); }
             }
         });
@@ -191,7 +214,9 @@ public final class DriveActivity extends AppCompatActivity {
             if (action != EditorInfo.IME_ACTION_SEARCH) return false;
             startSearch(); return true;
         });
+        searchField.setEndIconMode(TextInputLayout.END_ICON_CLEAR_TEXT);
         searchField.addView(search, new LinearLayout.LayoutParams(-1,-2));
+        searchField.setEndIconOnClickListener(v -> clearSearch());
         queryRow.addView(searchField, new LinearLayout.LayoutParams(0,-2,1));
         find = button(R.string.drive_search);
         LinearLayout.LayoutParams findParams = new LinearLayout.LayoutParams(-2,-2);
@@ -244,6 +269,9 @@ public final class DriveActivity extends AppCompatActivity {
         message.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         message.setPadding(0,dp(8),0,dp(8));
         root.addView(message);
+        retry=button(R.string.drive_retry_list);
+        retry.setOnClickListener(v->load(retryAppend));
+        root.addView(retry,new LinearLayout.LayoutParams(-1,-2));
         fileList = new ListView(this);
         fileList.addHeaderView(root, null, false);
         LinearLayout footer = column();
@@ -251,7 +279,20 @@ public final class DriveActivity extends AppCompatActivity {
         more.setOnClickListener(v -> load(true));
         footer.addView(more,new LinearLayout.LayoutParams(-1,-2));
         transfer = label("",14);
-        footer.addView(transfer);
+        transfer.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        root.addView(transfer);
+        transferProgress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);transferProgress.setMax(1000);
+        root.addView(transferProgress,new LinearLayout.LayoutParams(-1,dp(8)));
+        transferDetails=button(R.string.drive_transfer_details);
+        transferDetails.setOnClickListener(v->startActivity(new Intent(this,MainActivity.class)));
+        root.addView(transferDetails,new LinearLayout.LayoutParams(-1,-2));
+        cancelTransfer=button(R.string.drive_cancel_transfer);
+        cancelTransfer.setOnClickListener(v->{
+            try{startService(new Intent(this,DownloadService.class).setAction(DownloadService.ACTION_STOP));}
+            catch(RuntimeException failed){message.setText(R.string.drive_cancel_failed);}
+        });
+        root.addView(cancelTransfer,new LinearLayout.LayoutParams(-1,-2));
+        transfer.setVisibility(View.GONE);transferProgress.setVisibility(View.GONE);transferDetails.setVisibility(View.GONE);cancelTransfer.setVisibility(View.GONE);
         fileList.addFooterView(footer, null, false);
         fileList.setAdapter(adapter);
         container.addView(fileList,new LinearLayout.LayoutParams(-1,-1));
@@ -368,7 +409,7 @@ public final class DriveActivity extends AppCompatActivity {
         requestVersion++;
         if (listing != null) listing.cancel(true);
         loading = false;
-        files.clear(); nextPage = ""; parents.clear(); folder = "root"; activeSearch = "";
+        browser.reset(); listingFailed=false;refreshAfterTransfer=false; nextPage = ""; parents.clear(); folder = "root"; activeSearch = "";
         currentDrive="";
         currentView=DriveApi.View.FOLDER; currentSort=DriveApi.Sort.NAME;
         viewPicker.setSelection(0); sortPicker.setSelection(0); searchField.setHint(getString(R.string.drive_search_hint));
@@ -399,8 +440,17 @@ public final class DriveActivity extends AppCompatActivity {
         up.setEnabled(!loading&&!editing);
         more.setVisibility(nextPage.isEmpty() ? View.GONE : View.VISIBLE);
         more.setEnabled(!loading&&!editing);
+        retry.setVisibility(listingFailed&&wasConnected?View.VISIBLE:View.GONE);
+        retry.setEnabled(!loading&&!editing);
+        retry.setText(retryAppend?R.string.drive_retry_more:R.string.drive_retry_list);
         loadingIndicator.setVisibility(loading || editing || authorizing || wasRevoking ? View.VISIBLE : View.GONE);
         invalidateOptionsMenu();
+    }
+
+    private void clearSearch() {
+        if(loading||editing)return;
+        search.setText("");activeSearch="";
+        if(DriveSession.INSTANCE.connected())load(false);
     }
 
     private void startSearch() {
@@ -418,10 +468,12 @@ public final class DriveActivity extends AppCompatActivity {
         catch (DriveSession.AuthorizationRequired error) { clearBrowser(); return; }
         int version = ++requestVersion;
         if (listing != null) listing.cancel(true);
-        String queryFolder = folder, query = activeSearch, page = append ? nextPage : "";
+        String queryFolder = folder, query = activeSearch;
         DriveApi.View queryView=currentView; DriveApi.Sort querySort=currentSort;
         String queryDrive=currentDrive;
-        if (!append) { files.clear(); nextPage = ""; adapter.notifyDataSetChanged(); }
+        String context=lease.id()+"|"+folder+"|"+currentView+"|"+currentSort+"|"+currentDrive+"|"+activeSearch;
+        String page=browser.begin(context,append);
+        nextPage=browser.next();listingFailed=false;retryAppend=append;adapter.notifyDataSetChanged();
         loading = true; updateControls(); message.setText(R.string.drive_loading);
         listing = network.submit(() -> {
             try {
@@ -429,7 +481,10 @@ public final class DriveActivity extends AppCompatActivity {
                 handler.post(() -> {
                     if (isDestroyed() || version != requestVersion) return;
                     try { lease.requireCurrent(); } catch (DriveSession.AuthorizationRequired error) { clearBrowser(); return; }
-                    files.addAll(result.files); nextPage = result.nextToken;
+                    try{browser.accept(result);}catch(IOException invalid){
+                        loading=false;listingFailed=true;updateControls();message.setText(invalid.getMessage());return;
+                    }
+                    nextPage = browser.next();
                     loading = false; adapter.notifyDataSetChanged(); updateControls();
                     message.setText(files.isEmpty() ? getString(R.string.drive_empty) : getString(R.string.drive_file_count,files.size()));
                 });
@@ -437,7 +492,7 @@ public final class DriveActivity extends AppCompatActivity {
                 handler.post(() -> {
                     if (isDestroyed() || version != requestVersion) return;
                     if (!DriveSession.INSTANCE.connected()) clearBrowser();
-                    loading = false; updateControls();
+                    loading = false; listingFailed=DriveSession.INSTANCE.connected(); updateControls();
                     message.setText(error.getMessage());
                 });
             }
@@ -528,13 +583,13 @@ public final class DriveActivity extends AppCompatActivity {
         if(!managementReady())return;
         DriveSession.Lease lease;
         try{lease=DriveSession.INSTANCE.lease();}catch(DriveSession.AuthorizationRequired e){clearBrowser();return;}
-        boolean accepted=MutationCoordinator.INSTANCE.submit(()->{
+        boolean accepted=MutationCoordinator.INSTANCE.submit(lease.id(),()->{
             lease.requireWrite();operation.run(new DriveApi(GoogleAuthorization.transport(getApplicationContext(),lease)));
         },outcome->handler.post(()->{
                 if(isDestroyed())return;
                 observedMutation=MutationCoordinator.INSTANCE.revision();updateControls();adapter.notifyDataSetChanged();
                 try{lease.requireCurrent();}catch(DriveSession.AuthorizationRequired e){if(DriveSession.INSTANCE.connected())load(false);else clearBrowser();return;}
-                if(outcome!=null)message.setText(outcome);else load(false);
+                if(outcome!=null){message.setText(outcome);listingFailed=true;retryAppend=false;updateControls();}else load(false);
             }));
         if(!accepted){updateControls();return;}
         requestVersion++;if(listing!=null)listing.cancel(true);
@@ -725,6 +780,7 @@ public final class DriveActivity extends AppCompatActivity {
         menu.add(0,6,5,R.string.drive_refresh);
         menu.add(0,7,6,R.string.drive_upload);
         menu.add(0,8,7,R.string.drive_privacy);
+        menu.add(0,9,8,R.string.drive_transfer_details);
         return true;
     }
     @Override public boolean onPrepareOptionsMenu(Menu menu) {
@@ -748,6 +804,7 @@ public final class DriveActivity extends AppCompatActivity {
         if(item.getItemId()==6){load(false);return true;}
         if(item.getItemId()==7){chooseUpload();return true;}
         if(item.getItemId()==8){showPrivacy();return true;}
+        if(item.getItemId()==9){startActivity(new Intent(this,MainActivity.class));return true;}
         return super.onOptionsItemSelected(item);
     }
     private void revoke() {
@@ -833,6 +890,7 @@ public final class DriveActivity extends AppCompatActivity {
         },"privacy-text").start();
     }
     @Override protected void onSaveInstanceState(Bundle state) {
+        state.putLong("mutation_revision",observedMutation);
         state.putBoolean("management_requested",managementRequested);
         state.putString("upload_parent",uploadParent);state.putLong("upload_session",uploadSession);
         try {

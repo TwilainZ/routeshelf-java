@@ -85,6 +85,16 @@ final class DirectRoutes {
         return new ArrayList<>(ordered);
     }
 
+    static List<String> candidates(List<String> system,List<String> encrypted,List<String> history) {
+        LinkedHashSet<String> fresh=new LinkedHashSet<>();
+        // Neither a poisoned system answer set nor one resolver may consume all slots.
+        for(int i=0;i<Math.max(system.size(),encrypted.size())&&fresh.size()<8;i++) {
+            if(i<encrypted.size()&&publicIpv4(encrypted.get(i)))fresh.add(encrypted.get(i));
+            if(i<system.size()&&fresh.size()<8&&publicIpv4(system.get(i)))fresh.add(system.get(i));
+        }
+        return candidates(new ArrayList<>(fresh),history);
+    }
+
     Route select(String host, Set<String> failed) throws IOException {
         if (!DirectNet.googleHost(host)) throw new IOException("不允许的直连域名");
         try { gate.lockInterruptibly(); }
@@ -105,6 +115,7 @@ final class DirectRoutes {
             if (recent != null && System.nanoTime() - recent < TimeUnit.SECONDS.toNanos(10))
                 throw new IOException("刚才未找到可用直连线路；请稍后重试或点重新检测直连");
             long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(budgetMillis);
+            observer.update("正在自动收集 " + host + " 的候选线路…");
             LinkedHashSet<String> ips = new LinkedHashSet<>();
             if (cached != null && publicIpv4(cached.ip)) ips.add(cached.ip);
             for (String ip : candidates.get(host)) {

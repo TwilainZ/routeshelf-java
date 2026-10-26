@@ -29,6 +29,7 @@ public final class GoogleNetwork extends Application {
     private DirectRoutes routes;
     private final OkHttpClient base = new OkHttpClient.Builder()
         .followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false).build();
+    private final GoogleDnsDiscovery encryptedDns = new GoogleDnsDiscovery(base);
     private final GoogleHttp.DirectClients directClients = new GoogleHttp.DirectClients(base);
     private volatile String summary = "自动直连：浏览或下载时自动检测，无需手工填写 IP";
 
@@ -103,50 +104,53 @@ public final class GoogleNetwork extends Application {
                 if (DirectRoutes.publicIpv4(value)) result.add(value);
             }
         }
-        // Android's asynchronous resolver supports actual cancellation; an interrupted
-        // getAllByName can otherwise occupy every DNS worker after a network outage.
-        List<Future<List<String>>> lookups = new ArrayList<>();
-        List<CancellationSignal> cancellations = new ArrayList<>();
-        List<String> freshDns = new ArrayList<>();
-        for (String name : new String[]{host,"www.googleapis.com","drive.usercontent.google.com"}) {
-            java.util.concurrent.CompletableFuture<List<String>> lookup = new java.util.concurrent.CompletableFuture<>();
-            CancellationSignal cancellation = new CancellationSignal();
-            lookups.add(lookup); cancellations.add(cancellation);
-            try {
-                DnsResolver.getInstance().query(null,name,DnsResolver.TYPE_A,DnsResolver.FLAG_EMPTY,
-                    Runnable::run,cancellation,new DnsResolver.Callback<List<InetAddress>>() {
-                        @Override public void onAnswer(List<InetAddress> addresses,int rcode) {
-                            List<String> ips = new ArrayList<>();
-                            for (InetAddress address : addresses)
-                                if (address.getAddress().length==4 && DirectRoutes.publicIpv4(address.getHostAddress()))
-                                    ips.add(address.getHostAddress());
-                            lookup.complete(ips);
-                        }
-                        @Override public void onError(DnsResolver.DnsException error) {
-                            lookup.complete(Collections.emptyList());
-                        }
-                    });
-            } catch (RuntimeException unavailable) { lookup.complete(Collections.emptyList()); }
-        }
-        long end = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(1200);
-        try {
-            while (!lookups.isEmpty() && System.nanoTime() < end) {
-                for (java.util.Iterator<Future<List<String>>> iterator = lookups.iterator(); iterator.hasNext();) {
-                    Future<List<String>> lookup = iterator.next();
-                    if (!lookup.isDone()) continue;
-                    try { freshDns.addAll(lookup.get()); }
-                    catch (java.util.concurrent.ExecutionException ignored) { }
-                    iterator.remove();
-                }
-                if (!lookups.isEmpty()) Thread.sleep(20);
+        summary="正在收集 " + host + " 的系统及加密 DNS 候选…";
+        try (GoogleDnsDiscovery.Query encrypted = encryptedDns.start(host)) {
+            // Android's asynchronous resolver supports actual cancellation; an interrupted
+            // getAllByName can otherwise occupy every DNS worker after a network outage.
+            List<Future<List<String>>> lookups = new ArrayList<>();
+            List<CancellationSignal> cancellations = new ArrayList<>();
+            List<String> freshDns = new ArrayList<>();
+            for (String name : new LinkedHashSet<>(java.util.Arrays.asList(host,"www.googleapis.com","drive.usercontent.google.com"))) {
+                java.util.concurrent.CompletableFuture<List<String>> lookup = new java.util.concurrent.CompletableFuture<>();
+                CancellationSignal cancellation = new CancellationSignal();
+                lookups.add(lookup); cancellations.add(cancellation);
+                try {
+                    DnsResolver.getInstance().query(null,name,DnsResolver.TYPE_A,DnsResolver.FLAG_EMPTY,
+                        Runnable::run,cancellation,new DnsResolver.Callback<List<InetAddress>>() {
+                            @Override public void onAnswer(List<InetAddress> addresses,int rcode) {
+                                List<String> ips = new ArrayList<>();
+                                for (InetAddress address : addresses)
+                                    if (address.getAddress().length==4 && DirectRoutes.publicIpv4(address.getHostAddress()))
+                                        ips.add(address.getHostAddress());
+                                lookup.complete(ips);
+                            }
+                            @Override public void onError(DnsResolver.DnsException error) {
+                                lookup.complete(Collections.emptyList());
+                            }
+                        });
+                } catch (RuntimeException unavailable) { lookup.complete(Collections.emptyList()); }
             }
-        } catch (InterruptedException error) {
-            Thread.currentThread().interrupt(); throw new java.io.InterruptedIOException("直连检测已取消");
-        } finally {
-            for (CancellationSignal cancellation : cancellations) cancellation.cancel();
-            for (Future<List<String>> lookup : lookups) lookup.cancel(true);
+            long end = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(1800);
+            try {
+                while ((!lookups.isEmpty() || !encrypted.finished()) && System.nanoTime() < end) {
+                    for (java.util.Iterator<Future<List<String>>> iterator = lookups.iterator(); iterator.hasNext();) {
+                        Future<List<String>> lookup = iterator.next();
+                        if (!lookup.isDone()) continue;
+                        try { freshDns.addAll(lookup.get()); }
+                        catch (java.util.concurrent.ExecutionException ignored) { }
+                        iterator.remove();
+                    }
+                    if (!lookups.isEmpty() || !encrypted.finished()) Thread.sleep(20);
+                }
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt(); throw new java.io.InterruptedIOException("直连检测已取消");
+            } finally {
+                for (CancellationSignal cancellation : cancellations) cancellation.cancel();
+                for (Future<List<String>> lookup : lookups) lookup.cancel(true);
+            }
+            return DirectRoutes.candidates(freshDns,encrypted.addresses(),new ArrayList<>(result));
         }
-        return DirectRoutes.candidates(freshDns,new ArrayList<>(result));
     }
 
     private void probe(DirectRoutes.Route route) throws IOException {
