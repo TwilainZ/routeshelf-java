@@ -87,7 +87,8 @@ public final class DriveActivity extends AppCompatActivity {
                     }
                 }catch(DriveSession.AuthorizationRequired expired){clearBrowser();}
             }
-            networkStatus.setText(GoogleNetwork.get().summary());
+            String connectionSummary=GoogleNetwork.get().summary();
+            if(!android.text.TextUtils.equals(networkStatus.getText(),connectionSummary))networkStatus.setText(connectionSummary);
             if (wasConnected && !DriveSession.INSTANCE.connected()) clearBrowser();
             if (wasRevoking && !GoogleAuthorization.revoking.get()) {
                 message.setText(GoogleAuthorization.lastRevokeSucceeded ? R.string.drive_revoked : R.string.drive_revoke_failed);
@@ -99,7 +100,10 @@ public final class DriveActivity extends AppCompatActivity {
             String amount=s.active&&s.total>0?getString(R.string.drive_transfer_progress,percent,
                 android.text.format.Formatter.formatShortFileSize(DriveActivity.this,s.done),
                 android.text.format.Formatter.formatShortFileSize(DriveActivity.this,s.total)):"";
-            transfer.setText(hasTransfer?s.text+(amount.isEmpty()?"":"\n"+amount):"");
+            String transferText=hasTransfer?s.text+(amount.isEmpty()?"":"\n"+amount):"";
+            // Progress remains readable on focus without repeated spoken interruptions.
+            transfer.setAccessibilityLiveRegion(s.active?View.ACCESSIBILITY_LIVE_REGION_NONE:View.ACCESSIBILITY_LIVE_REGION_POLITE);
+            if(!android.text.TextUtils.equals(transfer.getText(),transferText))transfer.setText(transferText);
             transfer.setVisibility(hasTransfer?View.VISIBLE:View.GONE);
             transferProgress.setVisibility(s.active?View.VISIBLE:View.GONE);
             transferProgress.setIndeterminate(s.active&&s.total<=0);
