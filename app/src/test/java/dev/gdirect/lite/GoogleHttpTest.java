@@ -28,6 +28,23 @@ import org.junit.Test;
 
 /** Real TLS over loopback with ephemeral fixture certificates; production trust is never disabled. */
 public final class GoogleHttpTest {
+    @Test public void successiveDirectRequestsReuseTlsAndResetDiscardsTheConnection() throws Exception {
+        try(Fixture f=new Fixture(HOST)) {
+            OkHttpClient trusted=new OkHttpClient.Builder().sslSocketFactory(f.clientTrust.sslSocketFactory(),f.clientTrust.trustManager()).build();
+            GoogleHttp.DirectClients clients=new GoogleHttp.DirectClients(trusted);
+            DirectRoutes.Route route=new DirectRoutes.Route(HOST,"127.0.0.1",DirectRoutes.TlsMode.NO_SNI,0);
+            for(int i=0;i<3;i++) {
+                f.server.enqueue(new MockResponse().setBody("ok"));
+                try(okhttp3.Response response=clients.get(route).newCall(new Request.Builder().url(f.url()).build()).execute()) {
+                    assertEquals("ok",response.body().string());
+                }
+                assertEquals(i==1?1:0,f.server.takeRequest(2,TimeUnit.SECONDS).getSequenceNumber());
+                if(i==1)clients.clear();
+            }
+            clients.clear();
+        }
+    }
+
     @Test public void cancellingActiveConnectionDoesNotWaitForItsReadTimeout()throws Exception {
         try(Fixture f=new Fixture(HOST)) {
             f.server.enqueue(new MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE));

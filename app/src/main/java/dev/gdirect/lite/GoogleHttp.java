@@ -47,6 +47,23 @@ final class GoogleHttp {
         return builder.build();
     }
 
+    /** Stable client/DNS identity permits connection reuse across data requests. */
+    static final class DirectClients {
+        private final OkHttpClient trusted;
+        private final java.util.LinkedHashMap<String,OkHttpClient> clients = new java.util.LinkedHashMap<>(32,0.75f,true);
+        DirectClients(OkHttpClient trusted) { this.trusted=trusted; }
+        synchronized OkHttpClient get(DirectRoutes.Route route) throws IOException {
+            String key=route.host+"/"+route.key();
+            OkHttpClient client=clients.get(key);
+            if(client==null) {
+                client=direct(trusted,route); clients.put(key,client);
+                if(clients.size()>32)clients.remove(clients.keySet().iterator().next());
+            }
+            return client;
+        }
+        synchronized void clear() { clients.clear(); trusted.connectionPool().evictAll(); }
+    }
+
     static HttpsURLConnection open(URL url, Clients clients, Runnable failed) {
         return open(url,clients,failed, () -> { });
     }

@@ -29,6 +29,7 @@ public final class GoogleNetwork extends Application {
     private DirectRoutes routes;
     private final OkHttpClient base = new OkHttpClient.Builder()
         .followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false).build();
+    private final GoogleHttp.DirectClients directClients = new GoogleHttp.DirectClients(base);
     private volatile String summary = "自动直连：浏览或下载时自动检测，无需手工填写 IP";
 
     @Override public void onCreate() {
@@ -71,11 +72,11 @@ public final class GoogleNetwork extends Application {
         connectivity.registerDefaultNetworkCallback(new ConnectivityManager.NetworkCallback() {
             private Network current;
             @Override public void onAvailable(Network network) {
-                if (current != null && !network.equals(current)) routes.reset();
+                if (current != null && !network.equals(current)) reset();
                 current = network;
             }
             @Override public void onLost(Network network) {
-                if (network.equals(current)) { routes.reset(); current = null; summary = "网络已断开，恢复连接后将自动检测直连线路"; }
+                if (network.equals(current)) { reset(); current = null; summary = "网络已断开，恢复连接后将自动检测直连线路"; }
             }
         });
     }
@@ -86,7 +87,7 @@ public final class GoogleNetwork extends Application {
         preferences.edit().putBoolean("system-network",enabled).apply();
         summary = enabled ? "系统网络" : "自动直连：浏览或下载时自动检测";
     }
-    void reset() { routes.reset(); }
+    void reset() { routes.reset(); directClients.clear(); }
 
     private List<String> candidates(String host) throws IOException {
         // This hint already existed in our Java prototype. It is untrusted and must pass real-host TLS.
@@ -185,7 +186,7 @@ public final class GoogleNetwork extends Application {
         DirectRoutes.Route[] selected = new DirectRoutes.Route[1];
         return GoogleHttp.open(url, () -> {
             selected[0] = routes.select(url.getHost(),failed);
-            return GoogleHttp.direct(base,selected[0]);
+            return directClients.get(selected[0]);
         }, () -> {
             if (selected[0] != null) { failed.add(selected[0].key()); routes.reject(selected[0]); }
         }, guard);
