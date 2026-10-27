@@ -54,14 +54,16 @@ public final class DriveActivity extends AppCompatActivity {
     private final FileAdapter adapter = new FileAdapter();
     private TextView message, location, transfer, explanation, networkStatus,accessStatus;
     private LinearLayout queryRow;
+    private com.google.android.material.bottomnavigation.BottomNavigationView navigation;
+    private com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton create;
+    private boolean changingNavigation;
     private ListView fileList;
     private EditText search;
-    private android.widget.Spinner viewPicker;
     private TextInputLayout searchField;
     private DriveApi.View currentView=DriveApi.View.FOLDER;
     private DriveApi.Sort currentSort=DriveApi.Sort.NAME;
     private String currentDrive="";
-    private Button connect, find, more, up, retry, transferDetails, cancelTransfer;
+    private Button connect, more, up, retry, transferDetails, cancelTransfer;
     private ProgressBar loadingIndicator, transferProgress;
     private Future<?> listing;
     private String folder = "root", folderName, nextPage = "";
@@ -161,25 +163,19 @@ public final class DriveActivity extends AppCompatActivity {
         }
         waitingResolution = saved != null && saved.getBoolean("waiting_resolution", false);
         authorizing = waitingResolution;
-        LinearLayout container = column();
-        container.setPadding(dp(16), dp(8), dp(16), dp(8));
-        // Android 15 enforces edge-to-edge. Consume actual system/IME insets without fixed bar heights.
-        container.setOnApplyWindowInsetsListener((view, insets) -> {
-            android.graphics.Insets bars = android.os.Build.VERSION.SDK_INT >= 30
-                ? insets.getInsets(android.view.WindowInsets.Type.systemBars() | android.view.WindowInsets.Type.displayCutout()
-                    | android.view.WindowInsets.Type.ime())
-                : insets.getSystemWindowInsets();
-            view.setPadding(dp(16) + bars.left, dp(8) + bars.top, dp(16) + bars.right, dp(8) + bars.bottom);
-            return insets;
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(getWindow(),false);
+        LinearLayout container=column();
+        container.setBackgroundColor(com.google.android.material.color.MaterialColors.getColor(this,com.google.android.material.R.attr.colorSurface,android.graphics.Color.WHITE));
+        container.setOnApplyWindowInsetsListener((view,insets)->{
+            android.graphics.Insets bars=android.os.Build.VERSION.SDK_INT>=30
+                ?insets.getInsets(android.view.WindowInsets.Type.systemBars()|android.view.WindowInsets.Type.displayCutout()|android.view.WindowInsets.Type.ime())
+                :insets.getSystemWindowInsets();
+            view.setPadding(bars.left,bars.top,bars.right,bars.bottom);return insets.consumeSystemWindowInsets();
         });
-        setContentView(container);
-        container.requestApplyInsets();
-        LinearLayout root = column();
-        root.setFocusableInTouchMode(true);
-        if (getSupportActionBar() != null) {
-            getSupportActionBar().setTitle(R.string.drive_title);
-            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-        }
+        setContentView(container);container.requestApplyInsets();
+        com.google.android.material.appbar.MaterialToolbar toolbar=new com.google.android.material.appbar.MaterialToolbar(this);
+        toolbar.setTitle(R.string.app_name);container.addView(toolbar,new LinearLayout.LayoutParams(-1,-2));setSupportActionBar(toolbar);
+        LinearLayout root=column();root.setPadding(0,0,dp(8),0);root.setFocusableInTouchMode(true);
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override public void handleOnBackPressed() {
                 if (!activeSearch.isEmpty()) clearSearch();
@@ -212,45 +208,37 @@ public final class DriveActivity extends AppCompatActivity {
             if (action != EditorInfo.IME_ACTION_SEARCH) return false;
             startSearch(); return true;
         });
+        searchField.setBoxBackgroundMode(TextInputLayout.BOX_BACKGROUND_FILLED);
+        searchField.setBoxCornerRadii(dp(28),dp(28),dp(28),dp(28));
+        searchField.setBoxStrokeWidth(0);searchField.setBoxStrokeWidthFocused(0);
+        searchField.setStartIconDrawable(R.drawable.ic_search);
+        searchField.setStartIconContentDescription(getString(R.string.drive_search));
+        searchField.setStartIconOnClickListener(v->startSearch());
         searchField.setEndIconMode(TextInputLayout.END_ICON_CLEAR_TEXT);
         searchField.addView(search, new LinearLayout.LayoutParams(-1,-2));
         searchField.setEndIconOnClickListener(v -> clearSearch());
         queryRow.addView(searchField, new LinearLayout.LayoutParams(0,-2,1));
-        find = button(R.string.drive_search);
-        LinearLayout.LayoutParams findParams = new LinearLayout.LayoutParams(-2,-2);
-        findParams.setMarginStart(dp(8));
-        queryRow.addView(find, findParams);
-        find.setOnClickListener(v -> startSearch());
-        root.addView(queryRow);
-        viewPicker = new android.widget.Spinner(this);
-        android.widget.ArrayAdapter<CharSequence> views = android.widget.ArrayAdapter.createFromResource(this,R.array.drive_views,android.R.layout.simple_spinner_item);
-        views.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item); viewPicker.setAdapter(views);
-        viewPicker.setSelection(currentView.ordinal());
-        viewPicker.setMinimumHeight(dp(48)); viewPicker.setContentDescription(getString(R.string.drive_view));
-        root.addView(viewPicker);
-        viewPicker.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
-            public void onNothingSelected(android.widget.AdapterView<?> p) { }
-            public void onItemSelected(android.widget.AdapterView<?> p,View v,int n,long id) {
-                DriveApi.View selected=DriveApi.View.values()[n];
-                if(selected==currentView || !DriveSession.INSTANCE.connected())return;
-                currentView=selected;currentDrive=""; parents.clear(); folder="root"; activeSearch=""; search.setText("");
-                folderName=getResources().getStringArray(R.array.drive_views)[n]; location.setText(folderName);
-                searchField.setHint(getString(selected==DriveApi.View.FOLDER?R.string.drive_search_hint:R.string.drive_search_all));
-                if(selected==DriveApi.View.RECENT) { currentSort=DriveApi.Sort.MODIFIED; }
-                load(false);
-            }
-        });
+        queryRow.setPadding(dp(16),0,dp(16),dp(8));container.addView(queryRow);
         location = label(folderName,16);
         location.setPadding(0,dp(8),0,dp(8));
         location.setAccessibilityHeading(true);
+        location.setCompoundDrawablesRelativeWithIntrinsicBounds(0,0,R.drawable.ic_expand,0);
+        location.setCompoundDrawablePadding(dp(8));
+        location.setCompoundDrawableTintList(ColorStateList.valueOf(com.google.android.material.color.MaterialColors.getColor(this,com.google.android.material.R.attr.colorOnSurfaceVariant,android.graphics.Color.GRAY)));
+        location.setTypeface(android.graphics.Typeface.DEFAULT,android.graphics.Typeface.BOLD);
+        location.setMinHeight(dp(48));location.setGravity(Gravity.CENTER_VERTICAL);
+        location.setTooltipText(getString(R.string.drive_choose_library));
+        location.setOnClickListener(v->{if(!editing&&DriveSession.INSTANCE.connected())new MaterialAlertDialogBuilder(this).setTitle(R.string.drive_view)
+            .setSingleChoiceItems(R.array.drive_views,currentView.ordinal(),(dialog,n)->{dialog.dismiss();navigate(DriveApi.View.values()[n]);})
+            .setNegativeButton(android.R.string.cancel,null).show();});
         LinearLayout pathRow=new LinearLayout(this);pathRow.setGravity(Gravity.CENTER_VERTICAL);
         location.setMaxLines(2);location.setEllipsize(TextUtils.TruncateAt.END);
         pathRow.addView(location,new LinearLayout.LayoutParams(0,-2,1));
         up = button(R.string.drive_up);
         up.setOnClickListener(v -> goUp());
         pathRow.addView(up,new LinearLayout.LayoutParams(-2,-2));root.addView(pathRow);
-        loadingIndicator = new ProgressBar(this);
-        root.addView(loadingIndicator, new LinearLayout.LayoutParams(dp(32),dp(32)));
+        loadingIndicator = new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);loadingIndicator.setIndeterminate(true);
+        root.addView(loadingIndicator, new LinearLayout.LayoutParams(-1,dp(4)));
         message = label("",14);
         message.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         message.setPadding(0,dp(8),0,dp(8));
@@ -269,19 +257,43 @@ public final class DriveActivity extends AppCompatActivity {
         root.addView(transfer);
         transferProgress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);transferProgress.setMax(1000);
         root.addView(transferProgress,new LinearLayout.LayoutParams(-1,dp(8)));
-        transferDetails=button(R.string.drive_transfer_details);
+        LinearLayout transferActions=new LinearLayout(this);
+        transferDetails=button(R.string.drive_transfer_open);
         transferDetails.setOnClickListener(v->startActivity(new Intent(this,MainActivity.class)));
-        root.addView(transferDetails,new LinearLayout.LayoutParams(-1,-2));
+        transferActions.addView(transferDetails,new LinearLayout.LayoutParams(0,-2,1));
         cancelTransfer=button(R.string.drive_cancel_transfer);
         cancelTransfer.setOnClickListener(v->{
             try{startService(new Intent(this,DownloadService.class).setAction(DownloadService.ACTION_STOP));}
             catch(RuntimeException failed){message.setText(R.string.drive_cancel_failed);}
         });
-        root.addView(cancelTransfer,new LinearLayout.LayoutParams(-1,-2));
+        LinearLayout.LayoutParams cancelParams=new LinearLayout.LayoutParams(0,-2,1);cancelParams.setMarginStart(dp(8));
+        transferActions.addView(cancelTransfer,cancelParams);root.addView(transferActions);
         transfer.setVisibility(View.GONE);transferProgress.setVisibility(View.GONE);transferDetails.setVisibility(View.GONE);cancelTransfer.setVisibility(View.GONE);
         fileList.addFooterView(footer, null, false);
         fileList.setAdapter(adapter);
-        container.addView(fileList,new LinearLayout.LayoutParams(-1,-1));
+        fileList.setDivider(null);fileList.setClipToPadding(false);fileList.setPadding(dp(16),0,dp(8),dp(96));
+        android.widget.FrameLayout content=new android.widget.FrameLayout(this);
+        content.addView(fileList,new android.widget.FrameLayout.LayoutParams(-1,-1));
+        create=new com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton(this);
+        create.setText(R.string.drive_create);create.setIconResource(R.drawable.ic_add);
+        create.setContentDescription(getString(R.string.drive_create));
+        create.setOnClickListener(v->new MaterialAlertDialogBuilder(this).setTitle(R.string.drive_create)
+            .setItems(new String[]{getString(R.string.drive_upload),getString(R.string.drive_new_folder)},(dialog,n)->{if(n==0)chooseUpload();else editName(null);}).show());
+        android.widget.FrameLayout.LayoutParams floating=new android.widget.FrameLayout.LayoutParams(-2,-2,Gravity.BOTTOM|Gravity.END);
+        floating.setMargins(dp(16),dp(16),dp(16),dp(16));content.addView(create,floating);
+        container.addView(content,new LinearLayout.LayoutParams(-1,0,1));
+        navigation=new com.google.android.material.bottomnavigation.BottomNavigationView(this);
+        navigation.setLabelVisibilityMode(com.google.android.material.navigation.NavigationBarView.LABEL_VISIBILITY_LABELED);
+        navigation.getMenu().add(0,101,0,R.string.drive_nav_home).setIcon(R.drawable.ic_home);
+        navigation.getMenu().add(0,102,1,R.string.drive_nav_starred).setIcon(R.drawable.ic_star);
+        navigation.getMenu().add(0,103,2,R.string.drive_nav_shared).setIcon(R.drawable.ic_people);
+        navigation.getMenu().add(0,104,3,R.string.drive_nav_files).setIcon(R.drawable.ic_folder);
+        navigation.setOnItemSelectedListener(item->{
+            if(changingNavigation)return true;
+            navigate(item.getItemId()==101?DriveApi.View.RECENT:item.getItemId()==102?DriveApi.View.STARRED:item.getItemId()==103?DriveApi.View.SHARED:DriveApi.View.FOLDER);return true;
+        });
+        navigation.setOnItemReselectedListener(item->{if(!loading&&!editing&&DriveSession.INSTANCE.connected())load(false);});
+        container.addView(navigation,new LinearLayout.LayoutParams(-1,-2));
         updateControls();
         if (DriveSession.INSTANCE.connected()) {if(editing)message.setText(R.string.drive_editing);else load(false);}
         else message.setText(GoogleAuthorization.revoking.get() ? R.string.drive_revoking : R.string.drive_not_connected);
@@ -398,7 +410,7 @@ public final class DriveActivity extends AppCompatActivity {
         browser.reset(); listingFailed=false;refreshAfterTransfer=false; nextPage = ""; parents.clear(); folder = "root"; activeSearch = "";
         currentDrive="";
         currentView=DriveApi.View.FOLDER; currentSort=DriveApi.Sort.NAME;
-        viewPicker.setSelection(0); searchField.setHint(getString(R.string.drive_search_hint));
+        searchField.setHint(getString(R.string.drive_search_hint));
         folderName = getString(R.string.drive_root);
         search.setText("");
         location.setText(folderName); adapter.notifyDataSetChanged();
@@ -415,11 +427,14 @@ public final class DriveActivity extends AppCompatActivity {
         explanation.setVisibility(wasConnected ? View.GONE : View.VISIBLE);
         accessStatus.setVisibility(wasConnected?View.VISIBLE:View.GONE);accessStatus.setText(DriveSession.INSTANCE.writable()?R.string.drive_access_manage:R.string.drive_access_readonly);
         queryRow.setVisibility(wasConnected ? View.VISIBLE : View.GONE);
-        viewPicker.setVisibility(wasConnected?View.VISIBLE:View.GONE);
-        viewPicker.setEnabled(!loading&&!editing);
+        if(navigation!=null) {
+            changingNavigation=true;navigation.setSelectedItemId(currentView==DriveApi.View.RECENT?101:currentView==DriveApi.View.STARRED?102:currentView==DriveApi.View.SHARED?103:104);changingNavigation=false;
+            for(int i=0;i<navigation.getMenu().size();i++)navigation.getMenu().getItem(i).setEnabled(wasConnected&&!editing&&!authorizing);
+        }
+        if(create!=null){create.setVisibility(wasConnected&&currentView==DriveApi.View.FOLDER?View.VISIBLE:View.GONE);create.setEnabled(!loading&&!editing&&!DownloadService.snapshot.active);}
+
         location.setVisibility(wasConnected ? View.VISIBLE : View.GONE);
         search.setEnabled(wasConnected && !loading&&!editing);
-        find.setEnabled(wasConnected && !loading&&!editing);
         up.setVisibility(parents.isEmpty() ? View.GONE : View.VISIBLE);
         up.setEnabled(!loading&&!editing);
         more.setVisibility(nextPage.isEmpty() ? View.GONE : View.VISIBLE);
@@ -429,6 +444,15 @@ public final class DriveActivity extends AppCompatActivity {
         retry.setText(retryAppend?R.string.drive_retry_more:R.string.drive_retry_list);
         loadingIndicator.setVisibility(loading || editing || authorizing || wasRevoking ? View.VISIBLE : View.GONE);
         invalidateOptionsMenu();
+    }
+
+    private void navigate(DriveApi.View selected) {
+        if(editing||!DriveSession.INSTANCE.connected())return;
+        currentView=selected;currentDrive="";parents.clear();folder="root";activeSearch="";search.setText("");
+        folderName=getResources().getStringArray(R.array.drive_views)[selected.ordinal()];location.setText(folderName);
+        searchField.setHint(getString(selected==DriveApi.View.FOLDER?R.string.drive_search_hint:R.string.drive_search_all));
+        if(selected==DriveApi.View.RECENT)currentSort=DriveApi.Sort.MODIFIED;
+        load(false);
     }
 
     private void clearSearch() {
@@ -487,14 +511,14 @@ public final class DriveActivity extends AppCompatActivity {
         if(parents.size()>=100){message.setText(R.string.drive_folder_depth);return;}
         parents.push(new String[]{folder,folderName,currentView.name(),currentDrive});
         if(!entry.driveId.isEmpty())currentDrive=entry.driveId;
-        currentView=DriveApi.View.FOLDER; viewPicker.setSelection(0); searchField.setHint(getString(R.string.drive_search_hint));
+        currentView=DriveApi.View.FOLDER; searchField.setHint(getString(R.string.drive_search_hint));
         folder = entry.id; folderName = entry.name; activeSearch = "";
         search.setText(""); location.setText(folderName); load(false);
     }
     private void goUp() {
         if (parents.isEmpty()) { finish(); return; }
         String[] previous = parents.pop(); folder = previous[0]; folderName = previous[1]; activeSearch = "";
-        currentView=DriveApi.View.valueOf(previous[2]); viewPicker.setSelection(currentView.ordinal());
+        currentView=DriveApi.View.valueOf(previous[2]);
         currentDrive=previous[3];
         searchField.setHint(getString(currentView==DriveApi.View.FOLDER?R.string.drive_search_hint:R.string.drive_search_all));
         search.setText(""); location.setText(folderName); load(false);
@@ -726,11 +750,16 @@ public final class DriveActivity extends AppCompatActivity {
             final LinearLayout root=new LinearLayout(DriveActivity.this);
             final LinearLayout content=column();
             final TextView name=label("",16),detail=label("",14);
+            final android.widget.ImageView icon=new android.widget.ImageView(DriveActivity.this);
             final androidx.appcompat.widget.AppCompatImageButton more=new androidx.appcompat.widget.AppCompatImageButton(DriveActivity.this);
             Row(){
                 root.setGravity(Gravity.CENTER_VERTICAL);root.setMinimumHeight(dp(72));root.setPadding(0,dp(8),0,dp(8));
                 name.setMaxLines(2);name.setEllipsize(TextUtils.TruncateAt.END);detail.setMaxLines(1);detail.setEllipsize(TextUtils.TruncateAt.END);
                 content.addView(name);content.addView(detail);content.setPadding(0,0,dp(8),0);content.setMinimumHeight(dp(48));content.setGravity(Gravity.CENTER_VERTICAL);
+                icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);icon.setPadding(dp(8),dp(8),dp(8),dp(8));
+                root.addView(icon,new LinearLayout.LayoutParams(dp(48),dp(48)));
+                content.setPadding(dp(8),0,dp(8),0);
+                detail.setTextColor(com.google.android.material.color.MaterialColors.getColor(DriveActivity.this,com.google.android.material.R.attr.colorOnSurfaceVariant,android.graphics.Color.GRAY));
                 root.addView(content,new LinearLayout.LayoutParams(0,-2,1));
                 more.setImageResource(R.drawable.ic_more_vert);more.setScaleType(android.widget.ImageView.ScaleType.CENTER);
                 more.setImageTintList(android.content.res.ColorStateList.valueOf(com.google.android.material.color.MaterialColors.getColor(DriveActivity.this,com.google.android.material.R.attr.colorOnSurface,android.graphics.Color.BLACK)));
@@ -745,8 +774,15 @@ public final class DriveActivity extends AppCompatActivity {
         @Override public View getView(int n,View old,ViewGroup parent) {
             DriveApi.FileEntry entry=files.get(n);Row row=old!=null&&old.getTag() instanceof FileAdapter.Row?(Row)old.getTag():new Row();
             row.name.setText(entry.name);
+            row.icon.setImageResource(entry.folder?R.drawable.ic_folder:entry.mime.startsWith("image/")?R.drawable.ic_image:entry.mime.startsWith("video/")?R.drawable.ic_video:R.drawable.ic_file);
+            row.icon.setImageTintList(ColorStateList.valueOf(com.google.android.material.color.MaterialColors.getColor(DriveActivity.this,entry.folder?com.google.android.material.R.attr.colorOnSurfaceVariant:androidx.appcompat.R.attr.colorPrimary,android.graphics.Color.GRAY)));
             boolean previewable=entry.previewable();
             String detail=entry.shortcut?getString(R.string.drive_shortcut):entry.folder?getString(R.string.drive_folder):!entry.exportMime.isEmpty()&&entry.downloadable?getString(R.string.drive_export_format,entry.exportSuffix):entry.downloadable?android.text.format.Formatter.formatFileSize(DriveActivity.this,entry.size):getString(R.string.drive_unsupported);
+            if(entry.downloadable&&entry.size<0&&entry.exportMime.isEmpty())detail=getString(R.string.drive_size_unknown);
+            if(!entry.modified.isEmpty())try {
+                long modified=java.time.Instant.parse(entry.modified).toEpochMilli();
+                detail+=" · "+android.text.format.DateUtils.getRelativeTimeSpanString(modified,System.currentTimeMillis(),android.text.format.DateUtils.MINUTE_IN_MILLIS);
+            }catch(java.time.format.DateTimeParseException ignored){}
             row.detail.setText(detail);
             int action=entry.shortcut?R.string.drive_open_shortcut:entry.folder?R.string.drive_open_folder:previewable?R.string.drive_preview:R.string.drive_details;
             row.content.setContentDescription(getString(R.string.drive_action_named,getString(action),entry.name+" · "+detail));
@@ -771,7 +807,8 @@ public final class DriveActivity extends AppCompatActivity {
     @Override public boolean onCreateOptionsMenu(Menu menu) {
         menu.add(0,7,0,R.string.drive_upload).setIcon(R.drawable.ic_upload)
             .setIconTintList(android.content.res.ColorStateList.valueOf(com.google.android.material.color.MaterialColors.getColor(this,com.google.android.material.R.attr.colorOnSurface,android.graphics.Color.BLACK)))
-            .setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM);
+            .setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER);
+        menu.add(0,13,0,R.string.drive_public_download);
         menu.add(0,6,1,R.string.drive_refresh);
         menu.add(0,4,2,R.string.drive_new_folder);
         menu.add(0,10,3,R.string.drive_sort);
@@ -795,6 +832,7 @@ public final class DriveActivity extends AppCompatActivity {
         return super.onPrepareOptionsMenu(menu);
     }
     @Override public boolean onOptionsItemSelected(MenuItem item) {
+        if(item.getItemId()==13){startActivity(new Intent(this,MainActivity.class));return true;}
         if (item.getItemId() == android.R.id.home) { if(!activeSearch.isEmpty())clearSearch();else goUp(); return true; }
         if (item.getItemId() == 1) {
             new MaterialAlertDialogBuilder(this).setTitle(R.string.drive_revoke).setMessage(R.string.drive_revoke_explanation)

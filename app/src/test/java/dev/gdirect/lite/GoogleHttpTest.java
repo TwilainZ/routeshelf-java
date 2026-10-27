@@ -109,7 +109,7 @@ public final class GoogleHttpTest {
     }
 
     @Test public void directDnsPreservesRealHostAuthorizationAndCertificateIdentityWithAndWithoutSni() throws Exception {
-        for (DirectRoutes.TlsMode mode : DirectRoutes.TlsMode.values()) try (Fixture f = new Fixture(HOST)) {
+        for (DirectRoutes.TlsMode mode : DirectRoutes.TlsMode.values()) try (Fixture f = new Fixture(mode==DirectRoutes.TlsMode.GOOGLE_FRONT?"g.cn":HOST)) {
             f.server.enqueue(new MockResponse().setBody("private fixture"));
             OkHttpClient client = f.client(mode,true);
             HttpsURLConnection connection = GoogleHttp.open(f.url(), () -> client, () -> { });
@@ -122,10 +122,26 @@ public final class GoogleHttpTest {
             assertEquals("Bearer test-fixture-only",request.getHeader("Authorization"));
             assertEquals(HOST, connection.getURL().getHost());
             assertEquals(mode == DirectRoutes.TlsMode.NO_SNI, f.sni.get(2,TimeUnit.SECONDS).isEmpty());
+            if(mode==DirectRoutes.TlsMode.GOOGLE_FRONT)assertEquals("g.cn",new String(f.sni.get().get(0).getEncoded(),java.nio.charset.StandardCharsets.US_ASCII));
             // Covers providers that ignore an empty SSLParameters serverNames list:
             // the no-SNI TLS socket must never receive the canonical DNS peer name.
-            assertEquals(mode == DirectRoutes.TlsMode.NO_SNI ? "127.0.0.1" : HOST,f.tlsPeer.get());
+            assertEquals(mode == DirectRoutes.TlsMode.NO_SNI ? "127.0.0.1" : mode==DirectRoutes.TlsMode.GOOGLE_FRONT?"g.cn":HOST,f.tlsPeer.get());
             connection.disconnect();
+        }
+    }
+
+    @Test public void googleFrontendSeparatesContentHostAndRejectsCredentialsBeforeTls()throws Exception {
+        String host="drive.usercontent.google.com";
+        try(Fixture f=new Fixture("g.cn")) {
+            OkHttpClient client=GoogleHttp.direct(new OkHttpClient.Builder().sslSocketFactory(f.clientTrust.sslSocketFactory(),f.clientTrust.trustManager()).build(),
+                new DirectRoutes.Route(host,"127.0.0.1",DirectRoutes.TlsMode.GOOGLE_FRONT,0));
+            URL url=new URL("https://"+host+":"+f.server.getPort()+"/download");
+            for(String header:new String[]{"Authorization","X-Goog-Drive-Resource-Keys"})
+                assertThrows(IOException.class,()->client.newCall(new Request.Builder().url(url).header(header,"fixture").build()).execute());
+            assertEquals(0,f.server.getRequestCount());f.server.enqueue(new MockResponse().setBody("content"));
+            try(okhttp3.Response response=client.newCall(new Request.Builder().url(url).build()).execute()){assertEquals("content",response.body().string());}
+            RecordedRequest request=f.server.takeRequest(2,TimeUnit.SECONDS);assertEquals(host+":"+f.server.getPort(),request.getHeader("Host"));
+            assertNull(request.getHeader("Authorization"));assertNull(request.getHeader("X-Goog-Drive-Resource-Keys"));
         }
     }
 
@@ -140,7 +156,7 @@ public final class GoogleHttpTest {
     }
 
     @Test public void untrustedChainIsRejectedInBothModes() throws Exception {
-        for (DirectRoutes.TlsMode mode : DirectRoutes.TlsMode.values()) try (Fixture f = new Fixture(HOST)) {
+        for (DirectRoutes.TlsMode mode : DirectRoutes.TlsMode.values()) try (Fixture f = new Fixture(mode==DirectRoutes.TlsMode.GOOGLE_FRONT?"g.cn":HOST)) {
             OkHttpClient client = f.client(mode,false);
             assertThrows(IOException.class, () -> client.newCall(new Request.Builder().url(f.url())
                 .header("Authorization","Bearer test-fixture-only").build()).execute());

@@ -13,8 +13,36 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.Test;
 
 public final class DirectRoutesTest {
+    @Test public void expandsOnlyAfterFastCandidatesFailAndKeepsRelayOptInExplicit()throws Exception {
+        AtomicInteger expanded=new AtomicInteger();
+        DirectRoutes.Candidates source=new DirectRoutes.Candidates(){
+            public java.util.List<String> get(String host){return Collections.singletonList("8.8.8.8");}
+            public java.util.List<String> expand(String host,java.util.List<String> observed){expanded.incrementAndGet();assertTrue(observed.contains("8.8.8.8"));return Collections.singletonList("8.8.4.4");}
+        };
+        DirectRoutes fast=new DirectRoutes(source,route->{},new Memory(),message->{});
+        fast.select(HOST,Collections.emptySet());assertEquals(0,expanded.get());
+        DirectRoutes deeper=new DirectRoutes(source,route->{if(route.ip.equals("8.8.8.8"))throw new IOException("blocked");},new Memory(),message->{});
+        assertEquals("8.8.4.4",deeper.select(HOST,Collections.emptySet()).ip);assertEquals(1,expanded.get());
+        String relay="183.56.143.147";
+        DirectRoutes optIn=new DirectRoutes(host->Collections.singletonList(relay),route->{},new Memory(),message->{},1000,relay::equals);
+        assertEquals(relay,optIn.select(HOST,Collections.emptySet()).ip);
+        assertFalse(DirectRoutes.automaticAddress(relay));
+    }
+    @Test public void verifiedBackupsAvoidASecondDiscoveryAndFrontendIdentityCanRecover()throws Exception {
+        java.util.List<DirectRoutes.Route> pool=new java.util.ArrayList<>();Memory memory=new Memory(){
+            @Override public java.util.List<DirectRoutes.Route> loadAll(String host){return new java.util.ArrayList<>(pool);}
+            @Override public void saveAll(String host,java.util.List<DirectRoutes.Route> values){pool.clear();pool.addAll(values);save(host,values.get(0));}
+        };
+        AtomicInteger discoveries=new AtomicInteger();
+        DirectRoutes routes=new DirectRoutes(host->{discoveries.incrementAndGet();return Arrays.asList("8.8.8.8","8.8.4.4");},route->{
+            if(route.tls!=DirectRoutes.TlsMode.GOOGLE_FRONT)throw new IOException("real name blocked");
+        },memory,message->{});
+        DirectRoutes.Route first=routes.select(HOST,Collections.emptySet());assertEquals(DirectRoutes.TlsMode.GOOGLE_FRONT,first.tls);assertEquals(2,pool.size());
+        routes.reject(first);DirectRoutes.Route backup=routes.select(HOST,Collections.singleton(first.key()));
+        assertNotEquals(first.ip,backup.ip);assertEquals(1,discoveries.get());
+    }
     static final String HOST = "www.googleapis.com";
-    static final class Memory implements DirectRoutes.Store {
+    static class Memory implements DirectRoutes.Store {
         final Map<String,DirectRoutes.Route> values = new ConcurrentHashMap<>();
         public DirectRoutes.Route load(String host) { return values.get(host); }
         public void save(String host,DirectRoutes.Route route) { values.put(host,route); }
@@ -77,7 +105,7 @@ public final class DirectRoutesTest {
         Memory memory = new Memory();
         DirectRoutes routes = new DirectRoutes(host -> Arrays.asList("198.18.0.1","127.0.0.1","10.1.1.1","8.8.8.8"),route -> {
             assertEquals("8.8.8.8",route.ip);
-            if (route.tls == DirectRoutes.TlsMode.NORMAL) throw new IOException("blocked");
+            if (route.tls != DirectRoutes.TlsMode.NO_SNI) throw new IOException("blocked");
         },memory,message -> { });
         assertEquals(DirectRoutes.TlsMode.NO_SNI,routes.select(HOST,Collections.emptySet()).tls);
         for (String bad : new String[]{"10.0.0.1","127.0.0.1","198.19.1.1","169.254.1.1","100.64.0.1","192.0.2.1","198.51.100.2","203.0.113.1","224.1.1.1","8.08.8.8","google.com","256.1.1.1"})

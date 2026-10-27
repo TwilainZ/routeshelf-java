@@ -1,0 +1,8 @@
+{
+  "bundle": "gts-roots.pem",
+  "sha256": "6ba8f2f19e161f295a52b49e627796d7dbbeab3c7e60a46b07529e98e18536d7",
+  "roots": 4,
+  "issuer_repository": "https://pki.goog/repository/",
+  "collection_source": "Mozilla NSS certdata.txt",
+  "license": "MPL-2.0"
+}

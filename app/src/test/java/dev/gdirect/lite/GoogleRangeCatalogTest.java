@@ -6,6 +6,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.Test;
 
 public final class GoogleRangeCatalogTest {
+    @Test public void unavailableColdCatalogDoesNotDelayEveryRelayRequestAndResetCanRetry()throws Exception {
+        AtomicInteger attempts=new AtomicInteger();GoogleRangeCatalog catalog=new GoogleRangeCatalog(new Memory(),name->{attempts.incrementAndGet();throw new IOException("offline");});
+        assertThrows(IOException.class,catalog::load);assertThrows(IOException.class,catalog::load);assertEquals(1,attempts.get());
+        catalog.retryRefresh();assertThrows(IOException.class,catalog::load);assertEquals(2,attempts.get());
+    }
     static String complete(int start,int count) {
         String[] prefixes=new String[count];for(int i=0;i<count;i++)prefixes[i]="142.250."+(start+i)+".0/24";
         return GoogleAddressSpaceTest.json(prefixes);

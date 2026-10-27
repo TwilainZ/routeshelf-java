@@ -105,6 +105,9 @@ public final class MainActivity extends AppCompatActivity {
 
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        if(savedInstanceState==null&&Intent.ACTION_MAIN.equals(getIntent().getAction())) {
+            startActivity(new Intent(this,DriveActivity.class));finish();return;
+        }
         INK=MaterialColors.getColor(this,com.google.android.material.R.attr.colorOnSurface,Color.BLACK);
         MUTED=MaterialColors.getColor(this,com.google.android.material.R.attr.colorOnSurfaceVariant,INK);
         BLUE=MaterialColors.getColor(this,androidx.appcompat.R.attr.colorPrimary,INK);
@@ -162,19 +165,25 @@ public final class MainActivity extends AppCompatActivity {
         LinearLayout network = card(root);networkPanel=network;
         network.setVisibility(savedInstanceState!=null&&savedInstanceState.getBoolean("network_expanded")?View.VISIBLE:View.GONE);
         settingsToggle.setOnClickListener(v->{network.setVisibility(network.getVisibility()==View.VISIBLE?View.GONE:View.VISIBLE);});
-        heading(network, "数据连接", "自动直连用于公开下载、私人文件浏览和下载。在 Google 官方地址范围内检测，成功后缓存 24 小时；网络切换或连接失败后重新检测。");
+        heading(network, "数据连接", "浏览和传输共用连接设置。默认仅使用 Google 前端；也可明确允许已知第三方中转。证书始终由 Google 专用根验证。");
         networkMode = new Spinner(this);
         ArrayAdapter<String> modes = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item,
-            new String[]{"Google 前端直连（自动检测）", "系统网络（使用设备网络设置）"});
+            new String[]{"仅 Google 前端（自动检测）", "自动直连（允许已知中转）", "系统网络（使用设备网络设置）"});
         modes.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         networkMode.setAdapter(modes);
         networkMode.setMinimumHeight(dp(48));
         networkMode.setContentDescription("数据连接方式");
-        networkMode.setSelection(GoogleNetwork.get().systemNetwork() ? 1 : 0);
+        networkMode.setSelection(GoogleNetwork.get().systemNetwork()?2:GoogleNetwork.get().relayEnabled()?1:0);
         networkMode.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
-                GoogleNetwork.get().systemNetwork(position == 1);
-                if (scan != null) scan.setEnabled(position == 0);
+                if(position==1&&!GoogleNetwork.get().relayEnabled()) {
+                    new com.google.android.material.dialog.MaterialAlertDialogBuilder(MainActivity.this)
+                        .setTitle(R.string.relay_title).setMessage(R.string.relay_explanation)
+                        .setNegativeButton(android.R.string.cancel,(dialog,n)->networkMode.setSelection(GoogleNetwork.get().systemNetwork()?2:0))
+                        .setOnCancelListener(dialog->networkMode.setSelection(GoogleNetwork.get().systemNetwork()?2:0))
+                        .setPositiveButton(R.string.relay_allow,(dialog,n)->{GoogleNetwork.get().relayEnabled(true);GoogleNetwork.get().systemNetwork(false);}).show();
+                }else {GoogleNetwork.get().relayEnabled(position==1);GoogleNetwork.get().systemNetwork(position==2);}
+                if(scan!=null)scan.setEnabled(position!=2);
             }
             @Override public void onNothingSelected(android.widget.AdapterView<?> parent) { }
         });
@@ -281,6 +290,7 @@ public final class MainActivity extends AppCompatActivity {
         }else if(intent.getBooleanExtra(EXTRA_TRANSFER,false))page.post(()->page.smoothScrollTo(0,transferSection.getTop()));
     }
     @Override protected void onSaveInstanceState(Bundle state) {
+        if(linkInput==null){super.onSaveInstanceState(state);return;}
         state.putString("link_draft",linkInput.getText().toString());
         state.putBoolean("network_expanded",networkPanel.getVisibility()==View.VISIBLE);
         state.putBoolean("manual_expanded",manualPanel.getVisibility()==View.VISIBLE);
@@ -373,6 +383,6 @@ public final class MainActivity extends AppCompatActivity {
         if (scanThread != null) scanThread.interrupt();
         super.onDestroy();
     }
-    @Override protected void onStart() { super.onStart(); handler.post(ticker); }
+    @Override protected void onStart() { super.onStart(); if(networkStatus!=null)handler.post(ticker); }
     @Override protected void onStop() { handler.removeCallbacks(ticker); super.onStop(); }
 }

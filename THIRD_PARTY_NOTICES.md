@@ -96,3 +96,6 @@ Bundled component license/copyright/notice texts and the Apache-2.0 license are
 preserved in `app/src/main/assets/third-party-notices.txt`, accessible from the
 Drive screen's “许可证与第三方声明” menu. The Google SDK terms linked above apply
 to the Google components in the inventory.
+
+Public GTS Root R1–R4 certificates: Mozilla NSS root collection subset (MPL-2.0).
+See docs/TRUST_ROOTS.md and app/src/main/resources/gts-roots.LICENSE; no CA private keys are included.

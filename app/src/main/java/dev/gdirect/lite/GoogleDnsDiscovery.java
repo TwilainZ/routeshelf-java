@@ -45,7 +45,7 @@ final class GoogleDnsDiscovery {
             .addQueryParameter("edns_client_subnet","0.0.0.0/0").build();
         Request request=new Request.Builder().url(url).header("Accept","application/dns-json").get().build();
         Query query=new Query();
-        for(String ip:BOOTSTRAP)for(DirectRoutes.TlsMode tls:DirectRoutes.TlsMode.values()) {
+        for(String ip:BOOTSTRAP)for(DirectRoutes.TlsMode tls:new DirectRoutes.TlsMode[]{DirectRoutes.TlsMode.NORMAL,DirectRoutes.TlsMode.NO_SNI}) {
             try {
                 Call call=exchange.create(new DirectRoutes.Route(HOST,ip,tls,0),request);
                 query.calls.add(call);

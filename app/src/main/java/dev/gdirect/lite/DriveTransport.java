@@ -7,7 +7,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import javax.net.ssl.HttpsURLConnection;
 
-/** Authenticated requests have one exact origin and never follow redirects. */
+/** Credentials stay on the API. Media redirects use validated Google content origins without credentials. */
 final class DriveTransport {
     interface Connections { HttpsURLConnection open(URL url) throws IOException; }
     private final DriveSession.Lease lease;
@@ -50,10 +50,23 @@ final class DriveTransport {
             c.setRequestProperty("User-Agent", "GDirectLite/0.2 Android");
             if(range!=null)c.setRequestProperty("Range",range);if(validator!=null)c.setRequestProperty("If-Range",validator);
             int code = c.getResponseCode();
+            boolean content=false;
+            for(int hop=0;code==301||code==302||code==303||code==307||code==308;hop++) {
+                if(hop>=4||!mediaRequest(url))throw new IOException("已阻止非文件内容请求的跳转");
+                String location=c.getHeaderField("Location");
+                if(location==null||location.length()>16384)throw new IOException("文件内容跳转地址无效");
+                URL next=new URL(c.getURL(),location);requireContentUrl(next);lease.requireCurrent();
+                c.disconnect();c=connections.open(next);content=true;
+                c.setInstanceFollowRedirects(false);c.setConnectTimeout(10000);c.setReadTimeout(20000);
+                // Deliberately rebuild a minimal request. No bearer, resource key, cookie or Referer.
+                c.setRequestProperty("Accept-Encoding","identity");
+                if(range!=null)c.setRequestProperty("Range",range);if(validator!=null)c.setRequestProperty("If-Range",validator);
+                lease.requireCurrent();code=c.getResponseCode();
+            }
             lease.requireCurrent();
             if (code == 401) {
-                unauthorized.run();
-                throw new DriveSession.AuthorizationRequired();
+                if(!content){unauthorized.run();throw new DriveSession.AuthorizationRequired();}
+                throw new IOException("文件内容链接已过期，请重新下载");
             }
             if (code == 403) throw new IOException("Google 拒绝访问：请检查文件下载权限、Drive API 配置或配额");
             if (code == 404) throw new IOException("文件不存在，或当前 Google 账号无权访问");
@@ -63,6 +76,18 @@ final class DriveTransport {
             if (code != 200 && !(range!=null&&code==206)) throw new IOException("Google Drive 请求失败（HTTP " + code + "），请稍后重试");
             return c;
         } catch (IOException | RuntimeException error) { c.disconnect(); throw error; }
+    }
+
+    private static boolean mediaRequest(URL url) {
+        return url.getPath().matches("/drive/v3/files/[A-Za-z0-9_-]{1,200}/export")
+            ||(url.getPath().matches("/drive/v3/files/[A-Za-z0-9_-]{1,200}")&&url.getQuery()!=null
+                &&java.util.Arrays.asList(url.getQuery().split("&")).contains("alt=media"));
+    }
+    static void requireContentUrl(URL url)throws IOException {
+        String host=url.getHost();
+        if(!"https".equals(url.getProtocol())||(url.getPort()!=-1&&url.getPort()!=443)||url.getUserInfo()!=null||url.getRef()!=null
+            ||!(host.equals("drive.usercontent.google.com")||(host.endsWith(".googleusercontent.com")&&host.length()>".googleusercontent.com".length())))
+            throw new IOException("已阻止不可信的文件内容跳转");
     }
 
     String json(URL url) throws IOException {

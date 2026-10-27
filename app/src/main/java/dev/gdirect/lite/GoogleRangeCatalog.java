@@ -22,6 +22,8 @@ final class GoogleRangeCatalog {
             catch(Exception ignored){current=null;}
         }
         if(current!=null&&checked<=now&&now-checked<TimeUnit.DAYS.toMillis(7))return current;
+        if(current==null&&deferredEpoch==resetEpoch.get()&&System.nanoTime()-lastRefreshFailure<TimeUnit.MINUTES.toNanos(1))
+            throw new IOException("暂时无法取得官方地址列表，可重新检测；仅在明确允许时使用已知中转");
         if(current!=null&&checked<=now&&now-checked<TimeUnit.DAYS.toMillis(30)&&deferredEpoch==resetEpoch.get()&&System.nanoTime()-lastRefreshFailure<TimeUnit.HOURS.toNanos(1))return current;
         long updateEpoch=resetEpoch.get();
         try {
@@ -37,7 +39,8 @@ final class GoogleRangeCatalog {
             store.write(encoded);current=updated;checked=now;deferredEpoch=-1;return current;
         }catch(Exception error) {
             if(Thread.currentThread().isInterrupted())throw new java.io.InterruptedIOException("地址更新已取消");
-            if(current!=null&&checked<=now&&now-checked<TimeUnit.DAYS.toMillis(30)){lastRefreshFailure=System.nanoTime();deferredEpoch=updateEpoch;return current;}
+            lastRefreshFailure=System.nanoTime();deferredEpoch=updateEpoch;
+            if(current!=null&&checked<=now&&now-checked<TimeUnit.DAYS.toMillis(30))return current;
             throw new IOException("无法取得 Google 官方地址范围，请稍后重新检测或选择系统网络",error);
         }
     }

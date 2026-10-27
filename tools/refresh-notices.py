@@ -109,6 +109,9 @@ if args.module == 'inspector':
 preserved in `inspector/src/main/assets/third-party-notices.txt` inside the APK.
 This module has no Google authorization or download implementation.
 """
+if args.module == 'app':
+    footer += "\nPublic GTS Root R1–R4 certificates: Mozilla NSS root collection subset (MPL-2.0).\nSee docs/TRUST_ROOTS.md and app/src/main/resources/gts-roots.LICENSE; no CA private keys are included.\n"
+    bundled.append((root / "app/src/main/resources/gts-roots.LICENSE").read_text())
 inventory = header + "\n".join(rows) + "\n" + footer
 notice_path = root / ('THIRD_PARTY_NOTICES.md' if args.module == 'app' else 'inspector/THIRD_PARTY_NOTICES.md')
 notice_path.write_text(inventory)

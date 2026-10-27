@@ -30,8 +30,8 @@ def command(*parts):
 badging = command(args.aapt2, 'dump', 'badging', str(args.apk))
 package = re.search(r"package: name='([^']+)' versionCode='([^']+)' versionName='([^']+)'", badging)
 expected_package = 'dev.gdirect.lite.probe' if args.probe else ('dev.gdirect.lite.preview' if args.preview else 'dev.gdirect.lite')
-expected_version = '0.2.1-diagnostic-probe' if args.probe else '0.5.0-google-preview'
-expected_code = '3' if args.probe else '6'
+expected_version = '0.2.1-diagnostic-probe' if args.probe else '0.6.0-drive-preview'
+expected_code = '3' if args.probe else '7'
 if not package or package.groups() != (expected_package, expected_code, expected_version):
     raise SystemExit('APK package or diagnostic version does not match the expected build')
 if args.probe and re.search(r"uses-permission(?:-sdk-\d+)?: name='android.permission.INTERNET'", badging):
@@ -46,6 +46,13 @@ for resource in required_resources:
     if resource not in resources:
         raise SystemExit('Missing diagnostic resource: ' + resource)
 with zipfile.ZipFile(args.apk) as apk:
+    if not args.probe:
+        trust_config = json.loads((Path(__file__).resolve().parents[1] / 'config/google-trust-roots.json').read_text())
+        roots = apk.read(trust_config['bundle'])
+        if hashlib.sha256(roots).hexdigest() != trust_config['sha256'] or roots.count(b'-----BEGIN CERTIFICATE-----') != trust_config['roots']:
+            raise SystemExit('Packaged Google root certificate bundle does not match the reviewed roots')
+        if 'gts-roots.LICENSE' not in apk.namelist():
+            raise SystemExit('Google root certificate source/license notice is missing')
     dex = [apk.read(name) for name in apk.namelist() if re.fullmatch(r'classes\d*\.dex', name)]
     required_code = [args.revision]
     if args.probe:
@@ -58,7 +65,7 @@ with zipfile.ZipFile(args.apk) as apk:
                               'Ldev/gdirect/lite/GoogleNetwork;', 'Ldev/gdirect/lite/DirectRoutes;',
                               'Ldev/gdirect/lite/GoogleHttp;', 'Ldev/gdirect/lite/GoogleAddressSpace;',
                               'Ldev/gdirect/lite/GoogleRangeCatalog;', 'Ldev/gdirect/lite/GoogleFrontendScan;',
-                              'Ldev/gdirect/lite/GoogleCertificatePolicy;', 'Ldev/gdirect/lite/UploadTransfer;',
+                              'Ldev/gdirect/lite/GoogleCertificatePolicy;', 'Ldev/gdirect/lite/GoogleTrust;', 'Ldev/gdirect/lite/UploadTransfer;',
                               'Ldev/gdirect/lite/FilePreviewActivity;'))
     for value in required_code:
         if not any(value.encode('ascii') in part for part in dex):

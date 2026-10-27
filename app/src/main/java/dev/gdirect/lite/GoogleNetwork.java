@@ -25,11 +25,12 @@ import org.json.JSONObject;
 /** One routing policy for public transfers and authenticated Drive requests. Auth SDK stays separate. */
 public final class GoogleNetwork extends Application {
     private static GoogleNetwork instance;
+    static final String KNOWN_RELAY="183.56.143.147";
     private SharedPreferences preferences;
     private DirectRoutes routes;
     private GoogleRangeCatalog catalog;
     private volatile GoogleAddressSpace addressSpace;
-    private final OkHttpClient base = new OkHttpClient.Builder()
+    private final OkHttpClient base = GoogleTrust.clientBuilder()
         .followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false).addNetworkInterceptor(GoogleCertificatePolicy.CHECK).build();
     private final GoogleDnsDiscovery encryptedDns = new GoogleDnsDiscovery(base);
     private final GoogleHttp.DirectClients directClients = new GoogleHttp.DirectClients(base);
@@ -41,10 +42,10 @@ public final class GoogleNetwork extends Application {
         if(abandonedPreviews!=null)for(java.io.File file:abandonedPreviews)file.delete();
         preferences = getSharedPreferences("direct-network", MODE_PRIVATE);
         // Discard historical routes discovered before the relay's ownership was corrected.
-        if(preferences.getInt("routing-policy-version",0)<1) {
+        if(preferences.getInt("routing-policy-version",0)<2) {
             SharedPreferences.Editor migration=preferences.edit();
             for(String key:preferences.getAll().keySet())if(key.startsWith("route:"))migration.remove(key);
-            migration.remove("known-ip-hints").putInt("routing-policy-version",1).apply();
+            migration.remove("known-ip-hints").putInt("routing-policy-version",2).apply();
         }
         android.util.AtomicFile rangeFile=new android.util.AtomicFile(new java.io.File(getFilesDir(),"google-ipranges.json"));
         catalog=new GoogleRangeCatalog(new GoogleRangeCatalog.Store(){
@@ -59,11 +60,14 @@ public final class GoogleNetwork extends Application {
                 catch(IOException failure){if(out!=null)rangeFile.failWrite(out);throw failure;}
             }
         },name->GoogleRangeCatalog.download(base,name));
-        routes = new DirectRoutes(this::candidates, this::probe, new DirectRoutes.Store() {
+        routes = new DirectRoutes(new DirectRoutes.Candidates(){
+            public List<String> get(String host)throws IOException{return candidates(host);}
+            public List<String> expand(String host,List<String> observed)throws IOException{return expandedCandidates(observed);}
+        }, this::probe, new DirectRoutes.Store() {
             @Override public DirectRoutes.Route load(String host) {
                 String[] fields = preferences.getString("route:" + host, "").split("\\|", -1);
                 try {
-                    if (fields.length == 3 && addressSpace!=null && addressSpace.contains(fields[0])) return new DirectRoutes.Route(host, fields[0],
+                    if (fields.length == 3 && routeAddress(fields[0])) return new DirectRoutes.Route(host, fields[0],
                         DirectRoutes.TlsMode.valueOf(fields[1]), Long.parseLong(fields[2]));
                 } catch (IllegalArgumentException ignored) { }
                 return null;
@@ -73,7 +77,7 @@ public final class GoogleNetwork extends Application {
                 List<String> keys = new ArrayList<>();
                 for (String key : preferences.getAll().keySet()) if (key.startsWith("route:") && !key.equals("route:" + host)) keys.add(key);
                 Collections.sort(keys);
-                for (int i = 0; i < keys.size() - 31; i++) editor.remove(keys.get(i));
+                for (int i = 0; i < keys.size() - 31; i++) {editor.remove(keys.get(i));editor.remove("backups:"+keys.get(i).substring(6));}
                 LinkedHashSet<String> hints = new LinkedHashSet<>();
                 hints.add(route.ip);
                 for (String value : preferences.getString("known-ip-hints", "").split(",")) {
@@ -83,12 +87,38 @@ public final class GoogleNetwork extends Application {
                 editor.putString("route:" + host, route.ip + "|" + route.tls + "|" + route.checkedAt).apply();
             }
             @Override public void remove(String host) { preferences.edit().remove("route:" + host).apply(); }
+            @Override public List<DirectRoutes.Route> loadAll(String host) {
+                List<DirectRoutes.Route> result=new ArrayList<>();
+                try {
+                    org.json.JSONArray rows=new org.json.JSONArray(preferences.getString("backups:"+host,"[]"));
+                    for(int i=0;i<Math.min(8,rows.length());i++) {
+                        org.json.JSONObject row=rows.getJSONObject(i);String ip=row.getString("ip");
+                        if(routeAddress(ip))result.add(new DirectRoutes.Route(host,ip,DirectRoutes.TlsMode.valueOf(row.getString("tls")),row.getLong("at")));
+                    }
+                }catch(org.json.JSONException|IllegalArgumentException ignored){}
+                if(result.isEmpty()){DirectRoutes.Route primary=load(host);if(primary!=null)result.add(primary);}
+                return result;
+            }
+            @Override public void saveAll(String host,List<DirectRoutes.Route> values) {
+                org.json.JSONArray rows=new org.json.JSONArray();
+                try {
+                    for(DirectRoutes.Route value:values)rows.put(new org.json.JSONObject().put("ip",value.ip).put("tls",value.tls.name()).put("at",value.checkedAt));
+                    preferences.edit().putString("backups:"+host,rows.toString()).apply();
+                    if(!values.isEmpty())save(host,values.get(0));
+                }catch(org.json.JSONException error){throw new IllegalStateException(error);}
+            }
+            @Override public void reject(DirectRoutes.Route failed) {
+                List<DirectRoutes.Route> remaining=loadAll(failed.host);
+                remaining.removeIf(value->value.key().equals(failed.key()));
+                if(remaining.isEmpty())preferences.edit().remove("route:"+failed.host).remove("backups:"+failed.host).apply();
+                else saveAll(failed.host,remaining);
+            }
             @Override public void clear() {
                 SharedPreferences.Editor editor = preferences.edit();
-                for (String key : preferences.getAll().keySet()) if (key.startsWith("route:")) editor.remove(key);
+                for (String key : preferences.getAll().keySet()) if (key.startsWith("route:")||key.startsWith("backups:")) editor.remove(key);
                 editor.apply();
             }
-        }, text -> summary = text);
+        }, text -> summary = text,45000,this::routeAddress);
         DirectNet.connections = this::open;
         ConnectivityManager connectivity = getSystemService(ConnectivityManager.class);
         connectivity.registerDefaultNetworkCallback(new ConnectivityManager.NetworkCallback() {
@@ -105,6 +135,12 @@ public final class GoogleNetwork extends Application {
     static GoogleNetwork get() { return instance; }
     String summary() { return systemNetwork() ? "系统网络：遵循设备的 DNS 和代理设置" : summary; }
     boolean systemNetwork() { return preferences.getBoolean("system-network", false); }
+    boolean relayEnabled(){return preferences.getBoolean("allow-known-relay",false);}
+    private boolean routeAddress(String ip){return (relayEnabled()&&KNOWN_RELAY.equals(ip))||(addressSpace!=null&&addressSpace.contains(ip));}
+    void relayEnabled(boolean enabled){if(enabled!=relayEnabled()){preferences.edit().putBoolean("allow-known-relay",enabled).apply();reset();}}
+    private void prepareSpace()throws IOException {
+        try{addressSpace=officialSpace();}catch(IOException error){addressSpace=null;if(!relayEnabled())throw error;}
+    }
     void systemNetwork(boolean enabled) {
         preferences.edit().putBoolean("system-network",enabled).apply();
         summary = enabled ? "系统网络" : "自动直连：浏览或下载时自动检测";
@@ -129,7 +165,7 @@ public final class GoogleNetwork extends Application {
             }
         }
         GoogleAddressSpace space=addressSpace;
-        if(space==null)throw new IOException("尚未取得 Google 官方地址范围");
+        if(space==null){if(relayEnabled())return Collections.singletonList(KNOWN_RELAY);throw new IOException("尚未取得 Google 官方地址范围");}
         summary="正在收集 " + host + " 的系统及加密 DNS 候选…";
         try (GoogleDnsDiscovery.Query encrypted = encryptedDns.start(host)) {
             // Android's asynchronous resolver supports actual cancellation; an interrupted
@@ -179,18 +215,23 @@ public final class GoogleNetwork extends Application {
             freshDns.removeIf(ip->!space.contains(ip));encryptedAnswers.removeIf(ip->!space.contains(ip));result.removeIf(ip->!space.contains(ip));
             List<String> history=new ArrayList<>(result);
             List<String> output=DirectRoutes.candidates(freshDns,encryptedAnswers,history.subList(0,Math.min(4,history.size())));
-            summary="正在 Google 官方地址范围内检测可达前端…";
-            for(String ip:GoogleFrontendScan.reachable(space.sample(48,new java.security.SecureRandom()),space,GoogleFrontendScan::tcp))
-                if(output.size()<16&&!output.contains(ip))output.add(ip);
             for(String ip:history)if(output.size()<16&&!output.contains(ip))output.add(ip);
+            if(relayEnabled())output.add(0,KNOWN_RELAY);
             return output;
         }
     }
 
+    private List<String> expandedCandidates(List<String> observed)throws IOException {
+        GoogleAddressSpace space=addressSpace;if(space==null)return Collections.emptyList();
+        summary="正在扩大 Google 前端检测范围，可随时取消…";
+        List<String> plan=space.discoveryCandidates(observed,512,new java.security.SecureRandom());
+        return GoogleFrontendScan.reachable(plan,space,GoogleFrontendScan::tcp);
+    }
+
     private void probe(DirectRoutes.Route route) throws IOException {
-        if(addressSpace==null||!addressSpace.contains(route.ip))throw new IOException("不在 Google 前端地址范围");
+        if(!routeAddress(route.ip))throw new IOException("未允许此连接端点");
         OkHttpClient client = GoogleHttp.direct(base, route).newBuilder()
-            .connectTimeout(2, TimeUnit.SECONDS).readTimeout(2,TimeUnit.SECONDS).callTimeout(3,TimeUnit.SECONDS).build();
+            .connectTimeout(3, TimeUnit.SECONDS).readTimeout(3,TimeUnit.SECONDS).callTimeout(5,TimeUnit.SECONDS).build();
         boolean api = route.host.equals("www.googleapis.com");
         URL target = new URL("https://" + route.host + (api ? "/drive/v3/about?fields=user" : "/"));
         // No credentials or private file identifiers are used for discovery.
@@ -226,7 +267,7 @@ public final class GoogleNetwork extends Application {
         Set<String> failed = new java.util.HashSet<>();
         DirectRoutes.Route[] selected = new DirectRoutes.Route[1];
         return GoogleHttp.open(url, () -> {
-            addressSpace=officialSpace();
+            prepareSpace();
             selected[0] = routes.select(url.getHost(),failed);
             return directClients.get(selected[0]);
         }, () -> {
@@ -234,7 +275,7 @@ public final class GoogleNetwork extends Application {
         }, guard);
     }
     void checkRoutes() throws IOException {
-        addressSpace=officialSpace();
+        prepareSpace();
         List<String> results = new ArrayList<>();
         boolean failed = false;
         for (String host : new String[]{"www.googleapis.com","drive.usercontent.google.com"}) {

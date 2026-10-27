@@ -34,16 +34,29 @@ final class GoogleHttp {
         OkHttpClient.Builder builder = trusted.newBuilder()
             .proxy(Proxy.NO_PROXY).followRedirects(false).followSslRedirects(false)
             .dns(host -> {
-                if (!host.equalsIgnoreCase(route.host)) throw new java.net.UnknownHostException("Unmapped direct host");
+                if (!host.equalsIgnoreCase(route.tls==DirectRoutes.TlsMode.GOOGLE_FRONT?"g.cn":route.host)) throw new java.net.UnknownHostException("Unmapped direct host");
                 return Collections.singletonList(address);
             });
+        if(route.tls==DirectRoutes.TlsMode.GOOGLE_FRONT) {
+            // Keep the logical origin separate from the validated Google TLS identity.
+            // HTTP/1.1 avoids cross-origin HTTP/2 connection coalescing and authority ambiguity.
+            builder.protocols(Collections.singletonList(Protocol.HTTP_1_1)).addInterceptor(chain->{
+                Request logical=chain.request();
+                if(!logical.url().isHttps()||!logical.url().host().equals(route.host)||!DirectNet.googleHost(route.host)
+                    ||!logical.url().username().isEmpty()||!logical.url().password().isEmpty())throw new IOException("不允许的前端请求来源");
+                if(!route.host.equals("www.googleapis.com")&&(logical.header("Authorization")!=null||logical.header("X-Goog-Drive-Resource-Keys")!=null))
+                    throw new IOException("已阻止向内容服务器发送账户凭据");
+                String authority=route.host+(logical.url().port()==443?"":":"+logical.url().port());
+                return chain.proceed(logical.newBuilder().url(logical.url().newBuilder().host("g.cn").build()).header("Host",authority).build());
+            });
+        }
         if (route.tls == DirectRoutes.TlsMode.NO_SNI) {
             builder.sslSocketFactory(new NoSniFactory(trusted.sslSocketFactory()), trusted.x509TrustManager())
                 .connectionSpecs(Collections.singletonList(new ConnectionSpec.Builder(ConnectionSpec.MODERN_TLS)
                     .supportsTlsExtensions(false).build()))
                 .protocols(Collections.singletonList(Protocol.HTTP_1_1));
         }
-        // The default OkHttp hostname verifier still checks route.host, including with NO_SNI.
+        // Default verifier checks g.cn for GOOGLE_FRONT, otherwise the original host (also NO_SNI).
         return builder.build();
     }
 

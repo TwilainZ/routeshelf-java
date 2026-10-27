@@ -1,16 +1,17 @@
 <resources>
     <style name="DriveTheme" parent="Theme.Material3.DayNight">
-        <item name="colorPrimary">#A9BDFF</item>
-        <item name="colorOnPrimary">#10285D</item>
-        <item name="colorPrimaryContainer">#294175</item>
-        <item name="colorOnPrimaryContainer">#DDE5FF</item>
-        <item name="colorSecondary">#BBC7E0</item>
-        <item name="colorOnSecondary">#253149</item>
-        <item name="colorSurfaceContainer">#202938</item>
-        <item name="colorOutlineVariant">#475367</item>
-        <item name="colorSurface">#141B29</item>
-        <item name="colorOnSurface">#E1E7F3</item>
-        <item name="colorOnSurfaceVariant">#BBC5D8</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="colorPrimary">#A8C7FA</item>
+        <item name="colorOnPrimary">#062E6F</item>
+        <item name="colorPrimaryContainer">#0842A0</item>
+        <item name="colorOnPrimaryContainer">#D3E3FD</item>
+        <item name="colorSecondary">#C4C7C5</item>
+        <item name="colorOnSecondary">#303030</item>
+        <item name="colorSurfaceContainer">#282A2C</item>
+        <item name="colorOutlineVariant">#444746</item>
+        <item name="colorSurface">#1B1B1B</item>
+        <item name="colorOnSurface">#E3E3E3</item>
+        <item name="colorOnSurfaceVariant">#C4C7C5</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowLightNavigationBar">false</item>
     </style>

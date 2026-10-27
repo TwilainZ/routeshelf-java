@@ -81,6 +81,20 @@ final class GoogleAddressSpace {
         }
         return new ArrayList<>(result);
     }
+    /** Prefer independently observed neighborhoods; no imported upstream seeds or host-offset tables. */
+    List<String> discoveryCandidates(List<String> observed,int count,Random random)throws IOException {
+        LinkedHashSet<String> result=new LinkedHashSet<>();
+        for(String ip:observed)if(contains(ip))result.add(ip);
+        List<String> anchors=new ArrayList<>(result);Collections.shuffle(anchors,random);
+        for(int pass=0;pass<32&&result.size()<count/2;pass++)for(String anchor:anchors) {
+            long base=number(anchor)&0xffffff00L;
+            long address=base+random.nextInt(256);
+            String candidate=((address>>>24)&255)+"."+((address>>>16)&255)+"."+((address>>>8)&255)+"."+(address&255);
+            if(contains(candidate))result.add(candidate);
+        }
+        for(String ip:sample(count,random)){if(result.size()>=count)break;result.add(ip);}
+        return new ArrayList<>(result);
+    }
     private static long number(String ip)throws IOException {
         if(!DirectRoutes.publicIpv4(ip))throw new IOException("不是公网 IPv4 地址");
         long result=0;for(String part:ip.split("\\."))result=(result<<8)|Integer.parseInt(part);return result;
