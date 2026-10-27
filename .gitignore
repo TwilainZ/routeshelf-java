@@ -6,3 +6,10 @@ local.properties
 *.iml
 *.jks
 *.keystore
+
+# Local tooling and distributable outputs
+__pycache__/
+*.py[cod]
+*.apk
+*.apks
+.DS_Store

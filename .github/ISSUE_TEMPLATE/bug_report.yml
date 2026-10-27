@@ -1,0 +1,34 @@
+name: 问题报告
+description: 安装、界面、文件操作或连接问题
+title: "[问题] "
+body:
+  - type: markdown
+    attributes:
+      value: "请勿上传令牌、密码、私钥、私人链接或完整上传会话 URL。安全漏洞请先阅读 SECURITY.md。"
+  - type: input
+    id: build
+    attributes:
+      label: 应用版本与构建
+      description: 可在应用诊断中查看；不要只填写 APK 文件名。
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Android 版本和设备
+  - type: dropdown
+    id: mode
+    attributes:
+      label: 连接方式
+      options:
+        - 仅 Google 前端
+        - 允许已知第三方中转
+        - 系统网络
+        - 与连接无关或不确定
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 复现步骤、预期与实际结果
+      description: 如有错误状态码请原样记录；截图先遮盖私人信息。
+    validations:
+      required: true

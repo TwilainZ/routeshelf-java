@@ -1,1 +1,6 @@
+* text=auto eol=lf
+*.bat text eol=crlf
+*.png binary
+*.zip binary
+*.jar binary
 app/src/main/assets/third-party-notices.txt linguist-generated=true

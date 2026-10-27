@@ -41,7 +41,9 @@ if args.probe and 'probe_title' not in command(args.aapt2, 'dump', 'resources', 
 resources = command(args.aapt2, 'dump', 'resources', str(args.apk))
 if '已取消授权；未连接 Google Drive' in resources:
     raise SystemExit('Old cancellation-only error message is still packaged in the APK')
-required_resources = ('probe_title', 'probe_explanation') if args.probe else ('build_identity', 'diagnostics_title', 'drive_auth_no_result', 'drive_auth_status')
+required_resources = ('probe_title', 'probe_explanation') if args.probe else (
+    'build_identity', 'diagnostics_title', 'drive_auth_no_result', 'drive_auth_status',
+    'drive_nav_home', 'drive_create', 'ic_launcher_art', 'ic_launcher_monochrome')
 for resource in required_resources:
     if resource not in resources:
         raise SystemExit('Missing diagnostic resource: ' + resource)
