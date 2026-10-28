@@ -125,6 +125,7 @@
     <string name="drive_nav_shared">共享</string>
     <string name="drive_nav_files">文件</string>
     <string name="drive_create">新建</string>
+    <string name="builtin_google_candidates">查看内置 Google IP 候选</string>
     <string name="drive_transfer_open">查看传输</string>
     <string name="drive_choose_library">选择文件范围</string>
     <string name="drive_public_download">通过分享链接下载</string>

@@ -15,6 +15,19 @@ import org.json.JSONObject;
 final class GoogleAddressSpace {
     private final List<long[]> intervals;
     private GoogleAddressSpace(List<long[]> intervals){this.intervals=intervals;}
+    static GoogleAddressSpace fromBootstrapPrefixes(List<String> prefixes)throws IOException {
+        if(prefixes.isEmpty()||prefixes.size()>8)throw new IOException("内置网段数量无效");
+        List<long[]> blocks=new ArrayList<>();
+        for(String prefix:prefixes) {
+            if(!prefix.endsWith("/24"))throw new IOException("内置范围只允许有限 /24 网段");
+            long start=number(prefix.substring(0,prefix.length()-3));
+            if((start&255)!=0)throw new IOException("内置网段未对齐");
+            blocks.add(new long[]{start,start+255});
+        }
+        blocks.sort(Comparator.comparingLong(block->block[0]));
+        for(int i=1;i<blocks.size();i++)if(blocks.get(i)[0]<=blocks.get(i-1)[1])throw new IOException("内置网段重复");
+        return new GoogleAddressSpace(blocks);
+    }
     static GoogleAddressSpace parse(String google,String cloud)throws IOException {
         List<long[]> all=prefixes(google),excluded=prefixes(cloud),result=new ArrayList<>();
         if(all.isEmpty()||excluded.isEmpty())throw new IOException("Google 地址列表缺少 IPv4 数据");

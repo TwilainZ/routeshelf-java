@@ -10,13 +10,15 @@ Owner authorized Apache-2.0 for application-owned source after ownership review 
 
 ## Current product and verification truth
 
-0.6.0-drive-preview/code 7 includes browsing/search/paging/sorting, shared drives/shortcuts, explicit opt-in file management/sharing/trash, native previews and exports, foreground uploads/downloads, and Material Drive-style navigation. See README, PRODUCT.md, DESIGN.md, docs/ACCEPTANCE.md and docs/DIRECT_NETWORK.md.
+0.6.1-bootstrap-preview/code 8 includes browsing/search/paging/sorting, shared drives/shortcuts, explicit opt-in file management/sharing/trash, native previews and exports, foreground uploads/downloads, and Material Drive-style navigation. See README, PRODUCT.md, DESIGN.md, docs/ACCEPTANCE.md and docs/DIRECT_NETWORK.md.
 
-Network implementation: independent GTS-only trust store, normal/no-SNI/fixed g.cn TLS identity with logical Host separation, official non-Cloud IPv4 range filtering, fast candidates before bounded expanded TCP discovery, up to eight verified IP/TLS combinations, explicit opt-in known relay, and checked media-only Google content redirects without credentials. Default remains Google-only. No arbitrary SNI, arbitrary relay, certificate forgery or trust-all fallback. Bundled public roots retain MPL-2.0, see docs/TRUST_ROOTS.md.
+Network implementation: independent GTS-only trust store, normal/no-SNI/fixed g.cn TLS identity with logical Host separation, official non-Cloud IPv4 range filtering (a small attributed three-/24 bootstrap subset when the official catalog is unavailable), fast candidates before bounded expanded TCP discovery, up to eight verified IP/TLS combinations, explicit opt-in known relay, and checked media-only Google content redirects without credentials. Default remains Google-only. No arbitrary SNI, arbitrary relay, certificate forgery or trust-all fallback. Bundled public roots retain MPL-2.0, see docs/TRUST_ROOTS.md.
 
 Still absent: full bundled official IP snapshot, desktop 0.9.0 self-managed refresh-token direct routing, transfer queue, offline sync, cross-process private transfer recovery, collaborative editing and mount. Do not claim official-app parity or all-network Google access. Official Android authorization/token acquisition/revocation uses Google Play services' system network.
 
-Current local baseline: 98 JVM tests per debug/preview variant, 11 standalone parsing/security checks, real loopback TLS and actual builds/Lint. No current phone UI/launcher screenshots, real-account transfer or China-network acceptance. Earlier owner reports of original public download and old main-package login do not prove this version. A prior software emulator without KVM failed to install; do not repeat it as evidence.
+The owner requested builtin known Google candidates. Six individually unverified hints are independently selected inside three /24 blocks mentioned in a dated Shanghai Unicom public report. Never describe these six IPs as individually tested in China. Do not copy the upstream seed file. Live official ranges override the subset, cancellation does not trigger fallback, and every candidate still needs current TLS/service verification. See google-bootstrap.json and docs/DIRECT_NETWORK.md.
+
+Current local baseline: 104 JVM tests per debug/preview variant, 11 standalone parsing/security checks, real loopback TLS and actual builds/Lint. No current phone UI/launcher screenshots, real-account transfer or China-network acceptance. Earlier owner reports of original public download and old main-package login do not prove this version. A prior software emulator without KVM failed to install; do not repeat it as evidence.
 
 ## Signing and delivery continuity
 

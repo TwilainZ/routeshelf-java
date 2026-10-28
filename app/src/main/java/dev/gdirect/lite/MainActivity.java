@@ -191,6 +191,11 @@ public final class MainActivity extends AppCompatActivity {
         networkStatus = text(GoogleNetwork.get().summary(), 14, INK, false);
         networkStatus.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         network.addView(networkStatus);
+        Button builtIn=button(getString(R.string.builtin_google_candidates),false);
+        builtIn.setOnClickListener(v->new com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.builtin_google_candidates).setMessage(GoogleNetwork.get().builtInCandidates())
+            .setPositiveButton(android.R.string.ok,null).show());
+        network.addView(builtIn,new LinearLayout.LayoutParams(-1,-2));
         space(network, 10);
         scan = button("重新检测直连", false);
         network.addView(scan, new LinearLayout.LayoutParams(-1,-2));

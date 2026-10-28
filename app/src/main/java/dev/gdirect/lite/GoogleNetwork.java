@@ -29,6 +29,8 @@ public final class GoogleNetwork extends Application {
     private SharedPreferences preferences;
     private DirectRoutes routes;
     private GoogleRangeCatalog catalog;
+    private GoogleBootstrap bootstrap;
+    private volatile boolean bootstrapOnly;
     private volatile GoogleAddressSpace addressSpace;
     private final OkHttpClient base = GoogleTrust.clientBuilder()
         .followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false).addNetworkInterceptor(GoogleCertificatePolicy.CHECK).build();
@@ -41,6 +43,7 @@ public final class GoogleNetwork extends Application {
         java.io.File[] abandonedPreviews=getCacheDir().listFiles((dir,name)->name.startsWith("drive-preview-"));
         if(abandonedPreviews!=null)for(java.io.File file:abandonedPreviews)file.delete();
         preferences = getSharedPreferences("direct-network", MODE_PRIVATE);
+        try{bootstrap=GoogleBootstrap.bundled();}catch(IOException error){throw new IllegalStateException("内置 Google 候选不可读取",error);}
         // Discard historical routes discovered before the relay's ownership was corrected.
         if(preferences.getInt("routing-policy-version",0)<2) {
             SharedPreferences.Editor migration=preferences.edit();
@@ -118,7 +121,7 @@ public final class GoogleNetwork extends Application {
                 for (String key : preferences.getAll().keySet()) if (key.startsWith("route:")||key.startsWith("backups:")) editor.remove(key);
                 editor.apply();
             }
-        }, text -> summary = text,45000,this::routeAddress);
+        }, text -> summary = (bootstrapOnly?"内置候选验证 · 公开报告 "+bootstrap.reportDate+"\n":"")+text,45000,this::routeAddress);
         DirectNet.connections = this::open;
         ConnectivityManager connectivity = getSystemService(ConnectivityManager.class);
         connectivity.registerDefaultNetworkCallback(new ConnectivityManager.NetworkCallback() {
@@ -136,21 +139,20 @@ public final class GoogleNetwork extends Application {
     String summary() { return systemNetwork() ? "系统网络：遵循设备的 DNS 和代理设置" : summary; }
     boolean systemNetwork() { return preferences.getBoolean("system-network", false); }
     boolean relayEnabled(){return preferences.getBoolean("allow-known-relay",false);}
+    String builtInCandidates(){return bootstrap.description();}
     private boolean routeAddress(String ip){return (relayEnabled()&&KNOWN_RELAY.equals(ip))||(addressSpace!=null&&addressSpace.contains(ip));}
     void relayEnabled(boolean enabled){if(enabled!=relayEnabled()){preferences.edit().putBoolean("allow-known-relay",enabled).apply();reset();}}
     private void prepareSpace()throws IOException {
-        try{addressSpace=officialSpace();}catch(IOException error){addressSpace=null;if(!relayEnabled())throw error;}
+        summary="正在核对 Google 官方地址范围…";
+        GoogleBootstrap.Scope scope=bootstrap.scope(catalog);
+        addressSpace=scope.space;bootstrapOnly=scope.bundled;
+        if(bootstrapOnly)summary="官方列表暂不可达，先验证内置公开报告候选；没有通过验证的地址不会使用";
     }
     void systemNetwork(boolean enabled) {
         preferences.edit().putBoolean("system-network",enabled).apply();
         summary = enabled ? "系统网络" : "自动直连：浏览或下载时自动检测";
     }
     void reset() { routes.reset(); directClients.clear(); if(catalog!=null)catalog.retryRefresh(); }
-
-    private GoogleAddressSpace officialSpace()throws IOException {
-        summary="正在核对 Google 官方地址范围…";
-        try{return catalog.load();}catch(IOException error){summary=error.getMessage();throw error;}
-    }
 
     private List<String> candidates(String host) throws IOException {
         LinkedHashSet<String> result = new LinkedHashSet<>();
@@ -166,6 +168,11 @@ public final class GoogleNetwork extends Application {
         }
         GoogleAddressSpace space=addressSpace;
         if(space==null){if(relayEnabled())return Collections.singletonList(KNOWN_RELAY);throw new IOException("尚未取得 Google 官方地址范围");}
+        if(bootstrapOnly) {
+            List<String> builtIn=bootstrap.candidates(space);
+            if(relayEnabled())builtIn.add(0,KNOWN_RELAY);
+            return builtIn;
+        }
         summary="正在收集 " + host + " 的系统及加密 DNS 候选…";
         try (GoogleDnsDiscovery.Query encrypted = encryptedDns.start(host)) {
             // Android's asynchronous resolver supports actual cancellation; an interrupted
@@ -214,7 +221,9 @@ public final class GoogleNetwork extends Application {
             List<String> encryptedAnswers=encrypted.addresses();
             freshDns.removeIf(ip->!space.contains(ip));encryptedAnswers.removeIf(ip->!space.contains(ip));result.removeIf(ip->!space.contains(ip));
             List<String> history=new ArrayList<>(result);
-            List<String> output=DirectRoutes.candidates(freshDns,encryptedAnswers,history.subList(0,Math.min(4,history.size())));
+            List<String> output=bootstrap.candidates(space);
+            for(String ip:DirectRoutes.candidates(freshDns,encryptedAnswers,history.subList(0,Math.min(4,history.size()))))
+                if(output.size()<32&&!output.contains(ip))output.add(ip);
             for(String ip:history)if(output.size()<16&&!output.contains(ip))output.add(ip);
             if(relayEnabled())output.add(0,KNOWN_RELAY);
             return output;
@@ -257,7 +266,7 @@ public final class GoogleNetwork extends Application {
             throw new IOException("不允许的 Google 数据地址");
         if (manualIp != null) {
             if (!DirectRoutes.automaticAddress(manualIp)) throw new IOException("手工地址必须是公网 IPv4，不能使用内网、fake-IP 或已确认的第三方中转");
-            addressSpace=officialSpace();
+            prepareSpace();
             if(!addressSpace.contains(manualIp))throw new IOException("该地址不属于当前 Google 前端范围");
             DirectRoutes.Route route = new DirectRoutes.Route(url.getHost(),manualIp,DirectRoutes.TlsMode.NORMAL,0);
             OkHttpClient manual = GoogleHttp.direct(base,route);

@@ -30,8 +30,8 @@ def command(*parts):
 badging = command(args.aapt2, 'dump', 'badging', str(args.apk))
 package = re.search(r"package: name='([^']+)' versionCode='([^']+)' versionName='([^']+)'", badging)
 expected_package = 'dev.gdirect.lite.probe' if args.probe else ('dev.gdirect.lite.preview' if args.preview else 'dev.gdirect.lite')
-expected_version = '0.2.1-diagnostic-probe' if args.probe else '0.6.0-drive-preview'
-expected_code = '3' if args.probe else '7'
+expected_version = '0.2.1-diagnostic-probe' if args.probe else '0.6.1-bootstrap-preview'
+expected_code = '3' if args.probe else '8'
 if not package or package.groups() != (expected_package, expected_code, expected_version):
     raise SystemExit('APK package or diagnostic version does not match the expected build')
 if args.probe and re.search(r"uses-permission(?:-sdk-\d+)?: name='android.permission.INTERNET'", badging):
@@ -43,12 +43,15 @@ if '已取消授权；未连接 Google Drive' in resources:
     raise SystemExit('Old cancellation-only error message is still packaged in the APK')
 required_resources = ('probe_title', 'probe_explanation') if args.probe else (
     'build_identity', 'diagnostics_title', 'drive_auth_no_result', 'drive_auth_status',
-    'drive_nav_home', 'drive_create', 'ic_launcher_art', 'ic_launcher_monochrome')
+    'drive_nav_home', 'drive_create', 'ic_launcher_art', 'ic_launcher_monochrome', 'builtin_google_candidates')
 for resource in required_resources:
     if resource not in resources:
         raise SystemExit('Missing diagnostic resource: ' + resource)
 with zipfile.ZipFile(args.apk) as apk:
     if not args.probe:
+        bootstrap_source = Path(__file__).resolve().parents[1] / 'app/src/main/resources/google-bootstrap.json'
+        if apk.read('google-bootstrap.json') != bootstrap_source.read_bytes():
+            raise SystemExit('Packaged Google bootstrap candidates do not match the reviewed source')
         trust_config = json.loads((Path(__file__).resolve().parents[1] / 'config/google-trust-roots.json').read_text())
         roots = apk.read(trust_config['bundle'])
         if hashlib.sha256(roots).hexdigest() != trust_config['sha256'] or roots.count(b'-----BEGIN CERTIFICATE-----') != trust_config['roots']:
@@ -64,7 +67,7 @@ with zipfile.ZipFile(args.apk) as apk:
                 raise SystemExit('Offline inspector contains login/download code: ' + forbidden)
     else:
         required_code.extend(('Ldev/gdirect/lite/AuthorizationCallback;', 'Ldev/gdirect/lite/AppDiagnostics;',
-                              'Ldev/gdirect/lite/GoogleNetwork;', 'Ldev/gdirect/lite/DirectRoutes;',
+                              'Ldev/gdirect/lite/GoogleNetwork;', 'Ldev/gdirect/lite/GoogleBootstrap;', 'Ldev/gdirect/lite/DirectRoutes;',
                               'Ldev/gdirect/lite/GoogleHttp;', 'Ldev/gdirect/lite/GoogleAddressSpace;',
                               'Ldev/gdirect/lite/GoogleRangeCatalog;', 'Ldev/gdirect/lite/GoogleFrontendScan;',
                               'Ldev/gdirect/lite/GoogleCertificatePolicy;', 'Ldev/gdirect/lite/GoogleTrust;', 'Ldev/gdirect/lite/UploadTransfer;',
