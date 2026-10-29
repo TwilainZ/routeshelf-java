@@ -10,7 +10,7 @@ Owner authorized Apache-2.0 for application-owned source after ownership review 
 
 ## Current product and verification truth
 
-0.7.1-connection-preview/code 10 includes browsing/search/paging/sorting, shared drives/shortcuts, explicit opt-in file management/sharing/trash, native previews and exports, foreground uploads/downloads, and Material Drive-style navigation with a standalone unified SettingsActivity. See README, PRODUCT.md, DESIGN.md, docs/ACCEPTANCE.md and docs/DIRECT_NETWORK.md.
+0.7.2-logs-preview/code 11 includes browsing/search/paging/sorting, shared drives/shortcuts, explicit opt-in file management/sharing/trash, native previews and exports, foreground uploads/downloads, and Material Drive-style navigation with a standalone unified SettingsActivity. See README, PRODUCT.md, DESIGN.md, docs/ACCEPTANCE.md and docs/DIRECT_NETWORK.md.
 
 Network implementation: independent GTS-only trust store, normal/no-SNI/fixed g.cn TLS identity with logical Host separation, official non-Cloud IPv4 range filtering (a small attributed three-/24 bootstrap subset when the official catalog is unavailable), fast candidates before bounded expanded TCP discovery, up to eight verified IP/TLS combinations, explicit opt-in known relay, and checked media-only Google content redirects without credentials. Default remains Google-only. When relay consent exists, verify the fixed relay before blocking on official range/DNS discovery; successful preferred verification returns immediately, failure has a 2.5s/quarter-budget bound before Google fallback. Never silently enable relay consent. No arbitrary SNI, arbitrary relay, certificate forgery or trust-all fallback. Bundled public roots retain MPL-2.0, see docs/TRUST_ROOTS.md.
 
@@ -20,7 +20,7 @@ The owner requested builtin known Google candidates. Six individually unverified
 
 ConnectionCheck is application-owned, single-flight and cancellable; screen exit/rotation must not cancel it. Do not restart scans until cancellation finishes or reset policy while a transfer is active. Actual requests bind a network epoch and recheck it plus the account after TLS, before HTTP transmission; cancellation/policy changes must not poison healthy route caches. Bootstrap keeps at most two in-range historical hints before packaged candidates, all requiring revalidation. Settings centralizes account, routing, transfer preferences and help; public one-transfer IP remains separate.
 
-Current local baseline: 120 JVM tests per debug/preview variant, 11 standalone parsing/security checks, real loopback TLS and actual builds/Lint. No current phone UI/launcher screenshots, real-account transfer or China-network acceptance. Earlier owner reports of original public download and old main-package login do not prove this version. A prior software emulator without KVM failed to install; do not repeat it as evidence.
+Current local baseline: 134 JVM tests per debug/preview variant, 11 standalone parsing/security checks, real loopback TLS and actual builds/Lint. No current phone UI/launcher screenshots, real-account transfer or China-network acceptance. Earlier owner reports of original public download and old main-package login do not prove this version. A prior software emulator without KVM failed to install; do not repeat it as evidence.
 
 ## Signing and delivery continuity
 
@@ -29,6 +29,8 @@ Preserve dev.gdirect.lite.preview, the retained private key outside Git, and con
 Old dev.gdirect.lite has another signer whose private key is unavailable in the current environment; a different main-package signer cannot upgrade it. Do not claim the exact history of key loss is established or recommend uninstalling the working app by default. The separate inspector has no network/auth flow and only checks that old main package.
 
 Deliver only committed clean source through tools/build-preview-apk.sh with GDIRECT_PREVIEW_KEYSTORE_PATH. Missing/wrong retained key blocks delivery; never generate a replacement key. Validate packaged package/version/revision/signature and GTS roots. Private keys never enter Git, APK, ZIP, logs, chat or PR. Current cloud retention is confirmed, but independent external backup and CI Secret setup are not; do not promise permanent backup.
+
+Local DiagnosticLog is capped at 512 entries/128 KiB, stored privately with coalesced background I/O, viewed/copied/SAF-exported only on explicit user action. Keep typed allowlisted fields; never add raw URLs, headers, file/account identifiers, bodies, exception messages/stacks or logcat dumps. Disk failures and diagnostic callbacks must not block or fail network requests. Clearing during asynchronous restore must not resurrect old logs.
 
 ## Security and implementation
 

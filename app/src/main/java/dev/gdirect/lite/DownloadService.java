@@ -127,6 +127,8 @@ public final class DownloadService extends Service {
         try{startForeground(NOTIFY_ID,n,ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);}
         catch(RuntimeException error){transferGate.set(false);snapshot=new Snapshot("无法启动文件传输，请保持应用在前台后重试。",0,-1,0,false,false,null,null);stopSelf(startId);return START_NOT_STICKY;}
         thread = new Thread(() -> {
+            long logOperation=DiagnosticLog.get().operation(),logStart=System.nanoTime();
+            DiagnosticLog.get().record(uploadUri!=null?DiagnosticLog.Event.UPLOAD_BEGIN:DiagnosticLog.Event.DOWNLOAD_BEGIN,logOperation,null,null,null,0,0,null);
             Snapshot outcome;
             try {
                 if(uploadUri!=null) {
@@ -139,11 +141,13 @@ public final class DownloadService extends Service {
                     false, true, parts[1], parts[0]);
                 }
             } catch (Exception ex) {
+                DiagnosticLog.get().record(cancelled.get()?DiagnosticLog.Event.TRANSFER_CANCELLED:DiagnosticLog.Event.TRANSFER_FAILED,logOperation,null,null,null,DiagnosticLog.elapsed(logStart),0,ex);
                 String canceledMessage = uploadUri!=null?"上传已停止；Google 可能已接收部分或完整内容，请刷新列表核对。应用暂存已清理。":driveId == null ? "已取消；支持续传的已完成分块可在下次重试时使用。"
                     : "已取消私人文件下载；临时内容已清理。";
                 outcome = new Snapshot((cancelled.get() ? canceledMessage : (uploadUri!=null?"上传失败：":"下载失败：") + explain(ex)),
                     bytes.get(), snapshot.total, 0, false, false, null, null);
             }
+            if(outcome.finished)DiagnosticLog.get().record(DiagnosticLog.Event.TRANSFER_OK,logOperation,null,null,null,DiagnosticLog.elapsed(logStart),0,null);
             Snapshot result = outcome;
             Thread completedWorker = Thread.currentThread();
             new android.os.Handler(getMainLooper()).post(() -> {

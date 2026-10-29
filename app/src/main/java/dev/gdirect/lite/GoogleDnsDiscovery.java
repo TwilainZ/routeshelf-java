@@ -48,11 +48,12 @@ final class GoogleDnsDiscovery {
         for(String ip:BOOTSTRAP)for(DirectRoutes.TlsMode tls:new DirectRoutes.TlsMode[]{DirectRoutes.TlsMode.NORMAL,DirectRoutes.TlsMode.NO_SNI}) {
             try {
                 Call call=exchange.create(new DirectRoutes.Route(HOST,ip,tls,0),request);
-                query.calls.add(call);
+                query.calls.add(call);long dnsStart=System.nanoTime();
                 call.enqueue(new Callback(){
-                    @Override public void onFailure(Call ignored,IOException error){query.remaining.decrementAndGet();}
+                    @Override public void onFailure(Call ignored,IOException error){DiagnosticLog.get().record(DiagnosticLog.Event.DNS_FAILED,0,HOST,ip,tls,DiagnosticLog.elapsed(dnsStart),0,error);query.remaining.decrementAndGet();}
                     @Override public void onResponse(Call ignored,Response response) {
                         try(Response closed=response) {
+                            DiagnosticLog.get().record(DiagnosticLog.Event.DNS_HTTP,0,HOST,ip,tls,DiagnosticLog.elapsed(dnsStart),response.code(),null);
                             if(response.code()!=200||response.body()==null)return;
                             String type=response.header("Content-Type","").split(";",2)[0].trim();
                             if(!type.equalsIgnoreCase("application/dns-json")&&!type.equalsIgnoreCase("application/json"))return;

@@ -82,6 +82,18 @@ public final class GoogleHttpTest {
             assertThrows(IOException.class,c::getResponseCode);assertEquals(1,selections.get());assertEquals(1,f.server.getRequestCount());c.disconnect();
         }
     }
+    @Test public void realRequestLogKeepsStatusWithoutUrlHeadersOrBody()throws Exception {
+        DiagnosticLog log=DiagnosticLog.get();log.clear();String secret="CANARY_PRIVATE_FILE_TOKEN_7246";
+        try(Fixture f=new Fixture(HOST)) {
+            f.server.enqueue(new MockResponse().setBody(secret));OkHttpClient client=f.client(DirectRoutes.TlsMode.NORMAL,true);
+            URL url=new URL("https://"+HOST+":"+f.server.getPort()+"/drive/v3/files/"+secret+"?alt=media&resourcekey="+secret);
+            HttpsURLConnection c=GoogleHttp.open(url,()->client,()->{});c.setRequestProperty("Authorization","Bearer "+secret);c.setRequestProperty("Cookie",secret);
+            try{assertEquals(200,c.getResponseCode());assertEquals(secret,new String(c.getInputStream().readAllBytes(),java.nio.charset.StandardCharsets.UTF_8));}
+            finally{c.disconnect();}
+            assertFalse(log.encoded().contains(secret));assertFalse(log.report().contains(secret));assertFalse(log.report().contains("resourcekey"));
+            assertTrue(log.report().contains("REQUEST_HEADERS"));assertTrue(log.report().contains("REQUEST_RESPONSE"));assertTrue(log.report().contains("code=200"));
+        }
+    }
     private static final String HOST = "www.googleapis.com";
     static final class Fixture implements AutoCloseable {
         final MockWebServer server = new MockWebServer();

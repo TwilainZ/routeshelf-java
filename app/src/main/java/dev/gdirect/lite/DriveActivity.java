@@ -319,6 +319,7 @@ public final class DriveActivity extends AppCompatActivity {
     }
     private void authorize(boolean manage) {
         if (authorizing || GoogleAuthorization.revoking.get()) return;
+        DiagnosticLog.get().event(DiagnosticLog.Event.AUTH_BEGIN);
         authorizationPhase = "request";
         managementRequested=manage;
         lastActivityResult = null; lastSdkStatus = null;
@@ -367,6 +368,7 @@ public final class DriveActivity extends AppCompatActivity {
         if (request != AUTHORIZE) return;
         authorizationPhase = "callback";
         lastActivityResult = resultCode;
+        DiagnosticLog.get().record(DiagnosticLog.Event.AUTH_CALLBACK,0,null,null,null,0,resultCode,null);
         waitingResolution = false;
         AuthorizationCallback.Result<AuthorizationResult> decoded = AuthorizationCallback.decode(resultCode,data,payload -> {
             try { return Identity.getAuthorizationClient(this).getAuthorizationResultFromIntent(payload); }
@@ -384,6 +386,7 @@ public final class DriveActivity extends AppCompatActivity {
                 authFailed(getString(R.string.drive_scope_missing)); return;
             }
             DriveSession.INSTANCE.connect(result.getAccessToken(),new java.util.HashSet<>(result.getGrantedScopes()),managementRequested);
+            DiagnosticLog.get().event(DiagnosticLog.Event.AUTH_OK);
             authorizationPhase = "authorized";
             authorizing = false; waitingResolution = false;
             clearBrowser();
@@ -392,6 +395,7 @@ public final class DriveActivity extends AppCompatActivity {
     }
 
     private void authFailed(String reason) {
+        DiagnosticLog.get().record(DiagnosticLog.Event.AUTH_FAILED,0,null,null,null,0,lastSdkStatus==null?0:lastSdkStatus,null);
         authorizing = false; waitingResolution = false;
         message.setText(getString(R.string.auth_failure_with_build,reason,AppDiagnostics.buildLabel(this))); updateControls();
     }
@@ -410,6 +414,7 @@ public final class DriveActivity extends AppCompatActivity {
     }
 
     private void disconnect() {
+        DiagnosticLog.get().event(DiagnosticLog.Event.ACCOUNT_DISCONNECTED);
         try {
             String token = DriveSession.INSTANCE.lease().token();
             DriveSession.INSTANCE.disconnect();
@@ -497,9 +502,12 @@ public final class DriveActivity extends AppCompatActivity {
         String page=browser.begin(context,append);
         nextPage=browser.next();listingFailed=false;retryAppend=append;adapter.notifyDataSetChanged();
         loading = true; updateControls(); message.setText(R.string.drive_loading);
+        long logOperation=DiagnosticLog.get().operation(),logStart=System.nanoTime();
+        DiagnosticLog.get().record(DiagnosticLog.Event.LIST_BEGIN,logOperation,"www.googleapis.com",null,null,0,0,null);
         listing = network.submit(() -> {
             try {
                 DriveApi.Page result = new DriveApi(GoogleAuthorization.transport(this,lease)).list(queryFolder,query,page,queryView,querySort,queryDrive);
+                DiagnosticLog.get().record(DiagnosticLog.Event.LIST_READY,logOperation,"www.googleapis.com",null,null,DiagnosticLog.elapsed(logStart),0,null);
                 handler.post(() -> {
                     if (isDestroyed() || version != requestVersion) return;
                     try { lease.requireCurrent(); } catch (DriveSession.AuthorizationRequired error) { clearBrowser(); return; }
@@ -509,8 +517,10 @@ public final class DriveActivity extends AppCompatActivity {
                     nextPage = browser.next();
                     loading = false; adapter.notifyDataSetChanged(); updateControls();
                     message.setText(files.isEmpty() ? getString(R.string.drive_empty) : getString(R.string.drive_file_count,files.size()));
+                    DiagnosticLog.get().record(DiagnosticLog.Event.LIST_DISPLAYED,logOperation,"www.googleapis.com",null,null,DiagnosticLog.elapsed(logStart),0,null);
                 });
             } catch (IOException error) {
+                DiagnosticLog.get().record(DiagnosticLog.Event.LIST_FAILED,logOperation,"www.googleapis.com",null,null,DiagnosticLog.elapsed(logStart),0,error);
                 handler.post(() -> {
                     if (isDestroyed() || version != requestVersion) return;
                     if (!DriveSession.INSTANCE.connected()) clearBrowser();

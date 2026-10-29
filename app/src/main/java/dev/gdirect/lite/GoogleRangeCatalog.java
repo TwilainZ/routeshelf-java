@@ -49,13 +49,15 @@ final class GoogleRangeCatalog {
         if(!name.equals("goog.json")&&!name.equals("cloud.json"))throw new IOException("Invalid Google range filename");
         OkHttpClient client=trusted.newBuilder().followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false)
             .callTimeout(2500,TimeUnit.MILLISECONDS).build();
+        long operation=DiagnosticLog.get().operation(),start=System.nanoTime();
         try(Response response=client.newCall(new Request.Builder().url("https://www.gstatic.com/ipranges/"+name).get().build()).execute()) {
+            DiagnosticLog.get().record(name.equals("goog.json")?DiagnosticLog.Event.RANGE_GOOG_HTTP:DiagnosticLog.Event.RANGE_CLOUD_HTTP,operation,"www.gstatic.com",null,null,DiagnosticLog.elapsed(start),response.code(),null);
             if(response.code()!=200||response.body()==null)throw new IOException("Google 地址范围下载失败");
             try(java.io.InputStream in=response.body().byteStream();java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream()) {
                 byte[] buffer=new byte[4096];int n;
                 while((n=in.read(buffer))!=-1){if(bytes.size()+n>1024*1024)throw new IOException("Google 地址列表过大");bytes.write(buffer,0,n);}
                 return bytes.toString("UTF-8");
             }
-        }
+        }catch(IOException error){DiagnosticLog.get().record(DiagnosticLog.Event.RANGE_FETCH_FAILED,operation,"www.gstatic.com",null,null,DiagnosticLog.elapsed(start),0,error);throw error;}
     }
 }

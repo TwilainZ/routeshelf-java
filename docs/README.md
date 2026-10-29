@@ -13,3 +13,5 @@
 | 贡献与安全问题 | [贡献](../CONTRIBUTING.md) · [安全](../SECURITY.md) |
 
 `history/` 只保存历史审查证据，不代表当前功能或配置。源码 ZIP 在 archive/，不参与构建。当前版本以 app/build.gradle 为准；真实设备完成情况以验收记录为准。
+
+- [连接日志与反馈](DIAGNOSTICS.md)：复现、复制/导出、字段、限额及隐私边界。

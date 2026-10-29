@@ -84,6 +84,8 @@ final class GoogleHttp {
         return new GetConnection(url, clients, failed,guard);
     }
     static final class GetConnection extends HttpsURLConnection {
+        private final long logOperation=DiagnosticLog.get().operation();
+        private long requestStart;
         private final Clients clients;
         private final Runnable failed;
         private final Request.Builder request;
@@ -103,6 +105,13 @@ final class GoogleHttp {
             setConnectTimeout(10000); setReadTimeout(20000);
         }
         @Override public void connect() throws IOException {
+            if(!closed&&response!=null)return;
+            requestStart=System.nanoTime();
+            DiagnosticLog.get().record("GET".equals(method)?DiagnosticLog.Event.REQUEST_READ_BEGIN:DiagnosticLog.Event.REQUEST_WRITE_BEGIN,logOperation,url.getHost(),null,null,0,0,null);
+            try{connectInternal();DiagnosticLog.get().record(DiagnosticLog.Event.REQUEST_RESPONSE,logOperation,url.getHost(),null,null,DiagnosticLog.elapsed(requestStart),response.code(),null);}
+            catch(IOException|RuntimeException error){DiagnosticLog.get().record(closed||Thread.currentThread().isInterrupted()?DiagnosticLog.Event.REQUEST_CANCELLED:DiagnosticLog.Event.REQUEST_FAILED,logOperation,url.getHost(),null,null,DiagnosticLog.elapsed(requestStart),0,error);throw error;}
+        }
+        private void connectInternal()throws IOException {
             if (closed) throw new IOException("连接已关闭");
             if (response != null) return;
             if ("GET".equals(method) && doOutput) throw new IOException("GET cannot carry a body");
@@ -116,7 +125,7 @@ final class GoogleHttp {
                     .addNetworkInterceptor(chain->{
                         // TLS/discovery may take seconds. Recheck immediately before HTTP headers/body.
                         if(closed||Thread.currentThread().isInterrupted())throw new java.io.InterruptedIOException("连接已取消");
-                        guard.check();return chain.proceed(chain.request());
+                        guard.check();DiagnosticLog.get().record(DiagnosticLog.Event.REQUEST_HEADERS,logOperation,url.getHost(),null,null,DiagnosticLog.elapsed(requestStart),0,null);return chain.proceed(chain.request());
                     }).build();
                 guard.check();
                 okhttp3.RequestBody body=("POST".equals(method)||"PATCH".equals(method)||"PUT".equals(method))
@@ -130,6 +139,7 @@ final class GoogleHttp {
                     // Account/policy cancellation does not mean the endpoint itself failed.
                     guard.check();failed.run();
                     if (attempt + 1 >= limit) throw error;
+                    DiagnosticLog.get().record(DiagnosticLog.Event.REQUEST_RETRY,logOperation,url.getHost(),null,null,DiagnosticLog.elapsed(requestStart),0,error);
                 }
             }
         }
@@ -170,10 +180,10 @@ final class GoogleHttp {
             if (response.code() >= 400) throw new IOException("HTTP " + response.code());
             return new java.io.FilterInputStream(response.body().byteStream()) {
                 @Override public int read() throws IOException {
-                    try { return in.read(); } catch (IOException error) { failed.run(); throw error; }
+                    try { return in.read(); } catch (IOException error) { DiagnosticLog.get().record(DiagnosticLog.Event.BODY_FAILED,logOperation,url.getHost(),null,null,DiagnosticLog.elapsed(requestStart),0,error);failed.run(); throw error; }
                 }
                 @Override public int read(byte[] data,int offset,int count) throws IOException {
-                    try { return in.read(data,offset,count); } catch (IOException error) { failed.run(); throw error; }
+                    try { return in.read(data,offset,count); } catch (IOException error) { DiagnosticLog.get().record(DiagnosticLog.Event.BODY_FAILED,logOperation,url.getHost(),null,null,DiagnosticLog.elapsed(requestStart),0,error);failed.run(); throw error; }
                 }
             };
         }

@@ -93,6 +93,11 @@ public final class DirectRoutesTest {
         assertFalse(worker.isAlive());assertTrue(result.get() instanceof java.io.InterruptedIOException);assertTrue(memory.values.isEmpty());
     }
 
+    @Test public void failedDiagnosticObserverCannotBreakRouteSelection()throws Exception {
+        DirectRoutes.Trace trace=new DirectRoutes.Trace(){public void event(DirectRoutes.Phase phase,long operation,String host,DirectRoutes.Route route,long ms,Throwable error){throw new IllegalStateException("logging unavailable");}};
+        DirectRoutes routes=new DirectRoutes(host->Collections.singletonList("8.8.8.8"),route->{},new Memory(),message->{},1000,DirectRoutes::automaticAddress,trace);
+        assertEquals("8.8.8.8",routes.select(HOST,Collections.emptySet()).ip);
+    }
     static final String HOST = "www.googleapis.com";
     static class Memory implements DirectRoutes.Store {
         final Map<String,DirectRoutes.Route> values = new ConcurrentHashMap<>();

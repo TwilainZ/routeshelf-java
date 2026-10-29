@@ -43,6 +43,12 @@ final class DirectRoutes {
         default void reject(Route route) { remove(route.host); }
     }
     interface Observer { void update(String message); }
+    enum Phase {SELECT_BEGIN,SELECT_OK,SELECT_FAILED,CACHE_HIT,PREFERRED_BEGIN,PREFERRED_FALLBACK,DISCOVERY_BEGIN,PROBE_OK,PROBE_FAILED}
+    interface Trace {
+        default long operation(){return 0;}
+        default void event(Phase phase,long operation,String host,Route route,long millis,Throwable error){}
+    }
+    private final Trace trace;
     private final Candidates candidates;
     private final Probe probe;
     private final Store store;
@@ -62,6 +68,10 @@ final class DirectRoutes {
         this(candidates,probe,store,observer,budgetMillis,DirectRoutes::automaticAddress);
     }
     DirectRoutes(Candidates candidates,Probe probe,Store store,Observer observer,long budgetMillis,java.util.function.Predicate<String> permitted) {
+        this(candidates,probe,store,observer,budgetMillis,permitted,new Trace(){});
+    }
+    DirectRoutes(Candidates candidates,Probe probe,Store store,Observer observer,long budgetMillis,java.util.function.Predicate<String> permitted,Trace trace) {
+        this.trace=trace;
         this.candidates = candidates; this.probe = probe; this.store = store;
         this.observer = observer; this.budgetMillis = budgetMillis;this.permitted=permitted;
     }
@@ -113,6 +123,18 @@ final class DirectRoutes {
     }
 
     Route select(String host, Set<String> failed) throws IOException {
+        long operation=trace.operation(),start=System.nanoTime();
+        trace(Phase.SELECT_BEGIN,operation,host,null,0,null);
+        try {
+            Route route=selectInternal(host,failed,operation);
+            trace(Phase.SELECT_OK,operation,host,route,elapsed(start),null);return route;
+        }catch(IOException|RuntimeException error){trace(Phase.SELECT_FAILED,operation,host,null,elapsed(start),error);throw error;}
+    }
+    private void trace(Phase phase,long operation,String host,Route route,long millis,Throwable error) {
+        try{trace.event(phase,operation,host,route,millis,error);}catch(RuntimeException ignored){}
+    }
+    private static long elapsed(long start){return TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-start);}
+    private Route selectInternal(String host,Set<String> failed,long operation)throws IOException {
         if (!DirectNet.googleHost(host)) throw new IOException("不允许的直连域名");
         try { gate.lockInterruptibly(); }
         catch (InterruptedException error) { Thread.currentThread().interrupt(); throw interrupted(); }
@@ -123,7 +145,7 @@ final class DirectRoutes {
                 if(alternative!=null&&alternative.host.equals(host)&&permitted.test(alternative.ip)&&alternative.checkedAt<=now
                     &&now-alternative.checkedAt<MAX_AGE&&!failed.contains(alternative.key())&&!recentlyRejected(alternative)) {
                     if(generation!=epoch)throw new IOException("网络已切换，请重新检测直连线路");
-                    observer.update(description(alternative,true));return alternative;
+                    trace(Phase.CACHE_HIT,operation,host,alternative,0,null);observer.update(description(alternative,true));return alternative;
                 }
             }
             Route cached = store.load(host);
@@ -134,7 +156,7 @@ final class DirectRoutes {
                     && cached.checkedAt <= now && now - cached.checkedAt < MAX_AGE
                     && !failed.contains(cached.key()) && !recentlyRejected(cached)) {
                 if (generation != epoch) throw new IOException("网络已切换，请重新检测直连线路");
-                observer.update(description(cached, true));
+                trace(Phase.CACHE_HIT,operation,host,cached,0,null);observer.update(description(cached, true));
                 return cached;
             }
             if (generation != epoch) throw new IOException("网络已切换，请重新检测直连线路");
@@ -147,10 +169,13 @@ final class DirectRoutes {
             LinkedHashSet<String> preferred=new LinkedHashSet<>();
             for(String ip:candidates.preferred(host))if(permitted.test(ip)){preferred.add(ip);if(preferred.size()==2)break;}
             if(!preferred.isEmpty()) {
+                trace(Phase.PREFERRED_BEGIN,operation,host,null,0,null);
                 Route immediate=verify(host,preferred,failed,now,epoch,
-                    Math.min(deadline,System.nanoTime()+TimeUnit.MILLISECONDS.toNanos(Math.min(2500,Math.max(1,budgetMillis/4)))),0);
+                    Math.min(deadline,System.nanoTime()+TimeUnit.MILLISECONDS.toNanos(Math.min(2500,Math.max(1,budgetMillis/4)))),0,operation);
                 if(immediate!=null)return immediate;
+                trace(Phase.PREFERRED_FALLBACK,operation,host,null,0,null);
             }
+            trace(Phase.DISCOVERY_BEGIN,operation,host,null,0,null);
             observer.update("正在自动收集 " + host + " 的候选线路…");
             LinkedHashSet<String> ips = new LinkedHashSet<>();
             if (cached != null && permitted.test(cached.ip)) ips.add(cached.ip);
@@ -158,22 +183,22 @@ final class DirectRoutes {
                 if (permitted.test(ip)) ips.add(ip);
                 if (ips.size() >= 48) break;
             }
-            Route found=verify(host,ips,failed,now,epoch,Math.min(deadline,System.nanoTime()+TimeUnit.SECONDS.toNanos(10)));
+            Route found=verify(host,ips,failed,now,epoch,Math.min(deadline,System.nanoTime()+TimeUnit.SECONDS.toNanos(10)),operation);
             if(found!=null)return found;
             if(System.nanoTime()<deadline) {
                 LinkedHashSet<String> expanded=new LinkedHashSet<>();
                 for(String ip:candidates.expand(host,new ArrayList<>(ips)))if(permitted.test(ip)){expanded.add(ip);if(expanded.size()>=48)break;}
-                found=verify(host,expanded,failed,now,epoch,deadline);if(found!=null)return found;
+                found=verify(host,expanded,failed,now,epoch,deadline,operation);if(found!=null)return found;
             }
             String message="未找到 "+host+" 的可用连接。可在连接设置中重新检测或切换模式；VPN/TUN 可能接管连接。";
             observer.update(message);failures.put(host,System.nanoTime());throw new IOException(message);
         } finally { gate.unlock(); }
     }
 
-    private Route verify(String host,Set<String> ips,Set<String> failed,long now,long epoch,long deadline)throws IOException {
-        return verify(host,ips,failed,now,epoch,deadline,800);
+    private Route verify(String host,Set<String> ips,Set<String> failed,long now,long epoch,long deadline,long operation)throws IOException {
+        return verify(host,ips,failed,now,epoch,deadline,800,operation);
     }
-    private Route verify(String host,Set<String> ips,Set<String> failed,long now,long epoch,long deadline,long collectMillis)throws IOException {
+    private Route verify(String host,Set<String> ips,Set<String> failed,long now,long epoch,long deadline,long collectMillis,long operation)throws IOException {
         List<Route> attempts = new ArrayList<>();
         // Identity alternatives enter the bounded queue; a blocked mode cannot starve every other mode.
         for (String ip : ips) for (TlsMode mode : TlsMode.values()) {
@@ -186,7 +211,11 @@ final class DirectRoutes {
         int checked = 0;
         try {
             observer.update("正在验证 " + host + " 的连接与证书，可随时取消…");
-            for (Route route : attempts) jobs.add(completed.submit(() -> { probe.check(route); return route; }));
+            for (Route route : attempts) jobs.add(completed.submit(() -> {
+                long start=System.nanoTime();
+                try{probe.check(route);trace(Phase.PROBE_OK,operation,host,route,elapsed(start),null);return route;}
+                catch(IOException|RuntimeException error){trace(Phase.PROBE_FAILED,operation,host,route,elapsed(start),error);throw error;}
+            }));
             List<Route> verified=new ArrayList<>();
             long collectUntil=deadline;
             while (checked < jobs.size()) {

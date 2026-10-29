@@ -75,6 +75,7 @@ public final class SettingsActivity extends AppCompatActivity {
         content.addView(label("并行数应用于之后的下载，当前任务不变。下载文件保存在“下载/GDirect Lite”。",14));
         section("关于与帮助");
         row(getString(R.string.drive_privacy),v->showPrivacy());
+        row(getString(R.string.connection_logs),v->startActivity(new Intent(this,LogActivity.class)));
         row(getString(R.string.diagnostics_title),v->showDiagnostics());
         row(getString(R.string.licenses),v->showLicenses());
         content.addView(label(AppDiagnostics.buildLabel(this),14));render();

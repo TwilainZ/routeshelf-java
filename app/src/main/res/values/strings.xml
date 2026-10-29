@@ -133,4 +133,6 @@
     <string name="relay_explanation">已知中转 183.56.143.147 由第三方运营，并非 Google。原作者报告它转发加密连接；本应用仍只接受 Google GTS 根证书并验证 TLS 名称。中转运营者可看到你的 IP、流量大小和连接时间；部分模式也会暴露服务域名。可用性和运营方式可能改变。允许后优先验证它，成功时不等待官方地址列表或 DNS；失败才寻找 Google 前端。随时可切回“仅 Google 前端”。</string>
     <string name="relay_allow">允许并优先尝试</string>
     <string name="settings_title">设置</string>
+    <string name="connection_logs">连接日志与反馈</string>
+    <string name="connection_logs_explanation">日志仅保存在本机，包含连接阶段、远端 IP、耗时和错误类型。复现问题后刷新，再复制或保存文本发来反馈。不会记录令牌、账户、文件名或私人链接。</string>
 </resources>

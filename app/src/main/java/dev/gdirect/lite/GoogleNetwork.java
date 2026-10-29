@@ -27,6 +27,9 @@ public final class GoogleNetwork extends Application {
     private static GoogleNetwork instance;
     static final String KNOWN_RELAY="183.56.143.147";
     private SharedPreferences preferences;
+    private DiagnosticLogStore logStore;
+    boolean logStorageAvailable(){return logStore!=null&&logStore.available();}
+    void clearLogs(Runnable done){if(logStore!=null)logStore.clear(done);else{DiagnosticLog.get().clear();done.run();}}
     private DirectRoutes routes;
     private final Object policyLock=new Object();
     private long networkEpoch;
@@ -43,6 +46,21 @@ public final class GoogleNetwork extends Application {
 
     @Override public void onCreate() {
         super.onCreate(); instance = this;
+        android.util.AtomicFile logs=new android.util.AtomicFile(new java.io.File(getFilesDir(),"network-diagnostics.jsonl"));
+        logStore=new DiagnosticLogStore(DiagnosticLog.get(),new DiagnosticLogStore.Store(){
+            public String read()throws IOException {
+                try(java.io.InputStream in=logs.openRead();java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream()) {
+                    byte[] data=new byte[4096];int n;while((n=in.read(data))!=-1){if(out.size()+n>DiagnosticLog.MAX_BYTES)throw new IOException("Log too large");out.write(data,0,n);}return out.toString("UTF-8");
+                }
+            }
+            public void write(String text)throws IOException {
+                java.io.FileOutputStream out=null;
+                try{out=logs.startWrite();out.write(text.getBytes(java.nio.charset.StandardCharsets.UTF_8));logs.finishWrite(out);}
+                catch(IOException error){if(out!=null)logs.failWrite(out);throw error;}
+            }
+            public void delete(){logs.delete();}
+        });
+        DiagnosticLog.get().event(DiagnosticLog.Event.APP_START);
         java.io.File[] abandonedPreviews=getCacheDir().listFiles((dir,name)->name.startsWith("drive-preview-"));
         if(abandonedPreviews!=null)for(java.io.File file:abandonedPreviews)file.delete();
         preferences = getSharedPreferences("direct-network", MODE_PRIVATE);
@@ -125,17 +143,23 @@ public final class GoogleNetwork extends Application {
                 for (String key : preferences.getAll().keySet()) if (key.startsWith("route:")||key.startsWith("backups:")) editor.remove(key);
                 editor.apply();
             }
-        }, text -> summary = (bootstrapOnly?"内置候选验证 · 公开报告 "+bootstrap.reportDate+"\n":"")+text,45000,this::routeAddress);
+        }, text -> summary = (bootstrapOnly?"内置候选验证 · 公开报告 "+bootstrap.reportDate+"\n":"")+text,45000,this::routeAddress,new DirectRoutes.Trace(){
+            public long operation(){return DiagnosticLog.get().operation();}
+            public void event(DirectRoutes.Phase phase,long operation,String host,DirectRoutes.Route route,long millis,Throwable error){
+                DiagnosticLog.get().record(DiagnosticLog.Event.valueOf(phase.name()),operation,host,route==null?null:route.ip,route==null?null:route.tls,millis,0,error);
+            }
+        });
+        logMode();
         DirectNet.connections = this::open;
         ConnectivityManager connectivity = getSystemService(ConnectivityManager.class);
         connectivity.registerDefaultNetworkCallback(new ConnectivityManager.NetworkCallback() {
             private Network current;
             @Override public void onAvailable(Network network) {
-                if (current != null && !network.equals(current)) {check.cancel();check.clearResult();reset();summary="网络已切换，下次浏览或传输时自动检测";}
+                if (current != null && !network.equals(current)) {DiagnosticLog.get().event(DiagnosticLog.Event.NETWORK_CHANGED);check.cancel();check.clearResult();reset();summary="网络已切换，下次浏览或传输时自动检测";}
                 current = network;
             }
             @Override public void onLost(Network network) {
-                if (network.equals(current)) { check.cancel();check.clearResult();reset(); current = null; summary = "网络已断开，恢复连接后将自动检测直连线路"; }
+                if (network.equals(current)) {DiagnosticLog.get().event(DiagnosticLog.Event.NETWORK_LOST); check.cancel();check.clearResult();reset(); current = null; summary = "网络已断开，恢复连接后将自动检测直连线路"; }
             }
         });
     }
@@ -144,30 +168,34 @@ public final class GoogleNetwork extends Application {
     boolean systemNetwork() { return preferences.getBoolean("system-network", false); }
     boolean relayEnabled(){return preferences.getBoolean("allow-known-relay",false);}
     String builtInCandidates(){return bootstrap.description();}
+    private void logMode(){DiagnosticLog.get().event(systemNetwork()?DiagnosticLog.Event.MODE_SYSTEM:relayEnabled()?DiagnosticLog.Event.MODE_RELAY_ALLOWED:DiagnosticLog.Event.MODE_GOOGLE_ONLY);}
     private boolean routeAddress(String ip){return (relayEnabled()&&KNOWN_RELAY.equals(ip))||(addressSpace!=null&&addressSpace.contains(ip));}
     void relayEnabled(boolean enabled) {
         synchronized(policyLock) {
             if(enabled==relayEnabled())return;
-            preferences.edit().putBoolean("allow-known-relay",enabled).apply();reset();check.clearResult();
+            preferences.edit().putBoolean("allow-known-relay",enabled).apply();logMode();reset();check.clearResult();
             summary="连接方式已更新，下次浏览或传输时自动检测";
         }
     }
     private void prepareSpace()throws IOException {
+        long operation=DiagnosticLog.get().operation(),start=System.nanoTime();
+        DiagnosticLog.get().record(DiagnosticLog.Event.RANGE_BEGIN,operation,"www.gstatic.com",null,null,0,0,null);
         if(addressSpace==null)summary="正在核对 Google 官方地址范围…";
         GoogleBootstrap.Scope scope=bootstrap.scope(catalog);
         addressSpace=scope.space;bootstrapOnly=scope.bundled;
+        DiagnosticLog.get().record(bootstrapOnly?DiagnosticLog.Event.RANGE_BOOTSTRAP:DiagnosticLog.Event.RANGE_READY,operation,"www.gstatic.com",null,null,DiagnosticLog.elapsed(start),0,null);
         if(bootstrapOnly)summary="官方列表暂不可达，先验证内置公开报告候选；没有通过验证的地址不会使用";
     }
     void systemNetwork(boolean enabled) {
         synchronized(policyLock) {
             if(enabled==systemNetwork())return;
-            preferences.edit().putBoolean("system-network",enabled).apply();reset();check.clearResult();
+            preferences.edit().putBoolean("system-network",enabled).apply();logMode();reset();check.clearResult();
             summary=enabled?"系统网络":"自动直连：浏览或下载时自动检测";
         }
     }
     void reset() {
         synchronized(policyLock) {
-            networkEpoch++;routes.reset();directClients.clear();if(catalog!=null)catalog.retryRefresh();
+            DiagnosticLog.get().event(DiagnosticLog.Event.ROUTES_RESET);networkEpoch++;routes.reset();directClients.clear();if(catalog!=null)catalog.retryRefresh();
         }
     }
 
@@ -190,6 +218,8 @@ public final class GoogleNetwork extends Application {
             if(relayEnabled())builtIn.add(0,KNOWN_RELAY);
             return builtIn;
         }
+        long dnsOperation=DiagnosticLog.get().operation(),dnsStart=System.nanoTime();
+        DiagnosticLog.get().record(DiagnosticLog.Event.DNS_BEGIN,dnsOperation,host,null,null,0,0,null);
         summary="正在收集 " + host + " 的系统及加密 DNS 候选…";
         try (GoogleDnsDiscovery.Query encrypted = encryptedDns.start(host)) {
             // Android's asynchronous resolver supports actual cancellation; an interrupted
@@ -236,6 +266,7 @@ public final class GoogleNetwork extends Application {
                 for (Future<List<String>> lookup : lookups) lookup.cancel(true);
             }
             List<String> encryptedAnswers=encrypted.addresses();
+            DiagnosticLog.get().record(DiagnosticLog.Event.DNS_READY,dnsOperation,host,null,null,DiagnosticLog.elapsed(dnsStart),freshDns.size()+encryptedAnswers.size(),null);
             freshDns.removeIf(ip->!space.contains(ip));encryptedAnswers.removeIf(ip->!space.contains(ip));result.removeIf(ip->!space.contains(ip));
             List<String> history=new ArrayList<>(result);
             List<String> output=bootstrap.candidates(space,history);
@@ -251,7 +282,10 @@ public final class GoogleNetwork extends Application {
         GoogleAddressSpace space=addressSpace;if(space==null)return Collections.emptyList();
         summary="正在扩大 Google 前端检测范围，可随时取消…";
         List<String> plan=space.discoveryCandidates(observed,512,new java.security.SecureRandom());
-        return GoogleFrontendScan.reachable(plan,space,GoogleFrontendScan::tcp);
+        long operation=DiagnosticLog.get().operation(),start=System.nanoTime();
+        DiagnosticLog.get().record(DiagnosticLog.Event.SCAN_BEGIN,operation,null,null,null,0,0,null);
+        List<String> found=GoogleFrontendScan.reachable(plan,space,GoogleFrontendScan::tcp);
+        DiagnosticLog.get().record(DiagnosticLog.Event.SCAN_READY,operation,null,null,null,DiagnosticLog.elapsed(start),found.size(),null);return found;
     }
 
     private void probe(DirectRoutes.Route route) throws IOException {
@@ -261,7 +295,9 @@ public final class GoogleNetwork extends Application {
         boolean api = route.host.equals("www.googleapis.com");
         URL target = new URL("https://" + route.host + (api ? "/drive/v3/about?fields=user" : "/"));
         // No credentials or private file identifiers are used for discovery.
+        long probeStart=System.nanoTime();
         try (Response response = client.newCall(new Request.Builder().url(target).get().build()).execute()) {
+            DiagnosticLog.get().record(DiagnosticLog.Event.PROBE_HTTP,0,route.host,route.ip,route.tls,DiagnosticLog.elapsed(probeStart),response.code(),null);
             if (api) {
                 if (response.code() != 401) throw new IOException("Drive API 探测返回 HTTP "+response.code()+"，预期未授权响应 401");
                 try {
@@ -315,9 +351,13 @@ public final class GoogleNetwork extends Application {
     ConnectionCheck.Snapshot connectionCheck(){return check.snapshot();}
     void startCheck() {
         if(systemNetwork()||DownloadService.snapshot.active)return;
-        check.start(()->{reset();checkRoutes();return summary;});
+        check.start(()->{
+            long operation=DiagnosticLog.get().operation(),start=System.nanoTime();DiagnosticLog.get().record(DiagnosticLog.Event.CHECK_BEGIN,operation,null,null,null,0,0,null);
+            try{reset();checkRoutes();DiagnosticLog.get().record(DiagnosticLog.Event.CHECK_OK,operation,null,null,null,DiagnosticLog.elapsed(start),0,null);return summary;}
+            catch(IOException|RuntimeException error){DiagnosticLog.get().record(DiagnosticLog.Event.CHECK_FAILED,operation,null,null,null,DiagnosticLog.elapsed(start),0,error);throw error;}
+        });
     }
-    void cancelCheck(){check.cancel();}
+    void cancelCheck(){DiagnosticLog.get().event(DiagnosticLog.Event.CHECK_CANCEL);check.cancel();}
     void checkRoutes() throws IOException {
         if(Thread.currentThread().isInterrupted())throw new java.io.InterruptedIOException("检测已取消");
         if(!relayEnabled())prepareSpace();
