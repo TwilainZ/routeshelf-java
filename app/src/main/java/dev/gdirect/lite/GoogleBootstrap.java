@@ -50,6 +50,15 @@ final class GoogleBootstrap {
     List<String> candidates(GoogleAddressSpace allowed) {
         List<String> result=new ArrayList<>();for(String ip:addresses)if(allowed.contains(ip))result.add(ip);return result;
     }
+    List<String> candidates(GoogleAddressSpace allowed,List<String> history) {
+        LinkedHashSet<String> ordered=new LinkedHashSet<>();
+        // Known addresses remain hints: revalidate TLS/service in the current network.
+        // Reserve space for all packaged hints, even with large or polluted history.
+        for(String ip:history)if(allowed.contains(ip)&&DirectRoutes.automaticAddress(ip)) {
+            ordered.add(ip);if(ordered.size()==2)break;
+        }
+        ordered.addAll(candidates(allowed));return new ArrayList<>(ordered);
+    }
     static final class Scope {
         final GoogleAddressSpace space;final boolean bundled;
         Scope(GoogleAddressSpace space,boolean bundled){this.space=space;this.bundled=bundled;}

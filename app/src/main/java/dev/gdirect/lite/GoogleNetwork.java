@@ -28,6 +28,8 @@ public final class GoogleNetwork extends Application {
     static final String KNOWN_RELAY="183.56.143.147";
     private SharedPreferences preferences;
     private DirectRoutes routes;
+    private final Object policyLock=new Object();
+    private long networkEpoch;
     private final ConnectionCheck check=new ConnectionCheck();
     private GoogleRangeCatalog catalog;
     private GoogleBootstrap bootstrap;
@@ -142,7 +144,13 @@ public final class GoogleNetwork extends Application {
     boolean relayEnabled(){return preferences.getBoolean("allow-known-relay",false);}
     String builtInCandidates(){return bootstrap.description();}
     private boolean routeAddress(String ip){return (relayEnabled()&&KNOWN_RELAY.equals(ip))||(addressSpace!=null&&addressSpace.contains(ip));}
-    void relayEnabled(boolean enabled){if(enabled!=relayEnabled()){check.clearResult();preferences.edit().putBoolean("allow-known-relay",enabled).apply();reset();summary="连接方式已更新，下次浏览或传输时自动检测";}}
+    void relayEnabled(boolean enabled) {
+        synchronized(policyLock) {
+            if(enabled==relayEnabled())return;
+            preferences.edit().putBoolean("allow-known-relay",enabled).apply();reset();check.clearResult();
+            summary="连接方式已更新，下次浏览或传输时自动检测";
+        }
+    }
     private void prepareSpace()throws IOException {
         if(addressSpace==null)summary="正在核对 Google 官方地址范围…";
         GoogleBootstrap.Scope scope=bootstrap.scope(catalog);
@@ -150,12 +158,17 @@ public final class GoogleNetwork extends Application {
         if(bootstrapOnly)summary="官方列表暂不可达，先验证内置公开报告候选；没有通过验证的地址不会使用";
     }
     void systemNetwork(boolean enabled) {
-        if(enabled==systemNetwork())return;
-        preferences.edit().putBoolean("system-network",enabled).apply();
-        reset();check.clearResult();
-        summary = enabled ? "系统网络" : "自动直连：浏览或下载时自动检测";
+        synchronized(policyLock) {
+            if(enabled==systemNetwork())return;
+            preferences.edit().putBoolean("system-network",enabled).apply();reset();check.clearResult();
+            summary=enabled?"系统网络":"自动直连：浏览或下载时自动检测";
+        }
     }
-    void reset() { routes.reset(); directClients.clear(); if(catalog!=null)catalog.retryRefresh(); }
+    void reset() {
+        synchronized(policyLock) {
+            networkEpoch++;routes.reset();directClients.clear();if(catalog!=null)catalog.retryRefresh();
+        }
+    }
 
     private List<String> candidates(String host) throws IOException {
         LinkedHashSet<String> result = new LinkedHashSet<>();
@@ -172,7 +185,7 @@ public final class GoogleNetwork extends Application {
         GoogleAddressSpace space=addressSpace;
         if(space==null){if(relayEnabled())return Collections.singletonList(KNOWN_RELAY);throw new IOException("尚未取得 Google 官方地址范围");}
         if(bootstrapOnly) {
-            List<String> builtIn=bootstrap.candidates(space);
+            List<String> builtIn=bootstrap.candidates(space,new ArrayList<>(result));
             if(relayEnabled())builtIn.add(0,KNOWN_RELAY);
             return builtIn;
         }
@@ -224,7 +237,7 @@ public final class GoogleNetwork extends Application {
             List<String> encryptedAnswers=encrypted.addresses();
             freshDns.removeIf(ip->!space.contains(ip));encryptedAnswers.removeIf(ip->!space.contains(ip));result.removeIf(ip->!space.contains(ip));
             List<String> history=new ArrayList<>(result);
-            List<String> output=bootstrap.candidates(space);
+            List<String> output=bootstrap.candidates(space,history);
             for(String ip:DirectRoutes.candidates(freshDns,encryptedAnswers,history.subList(0,Math.min(4,history.size()))))
                 if(output.size()<32&&!output.contains(ip))output.add(ip);
             for(String ip:history)if(output.size()<16&&!output.contains(ip))output.add(ip);
@@ -249,13 +262,13 @@ public final class GoogleNetwork extends Application {
         // No credentials or private file identifiers are used for discovery.
         try (Response response = client.newCall(new Request.Builder().url(target).get().build()).execute()) {
             if (api) {
-                if (response.code() != 401) throw new IOException("Unexpected API probe status");
+                if (response.code() != 401) throw new IOException("Drive API 探测返回 HTTP "+response.code()+"，预期未授权响应 401");
                 try {
                     if (new JSONObject(response.peekBody(8192).string()).getJSONObject("error").getInt("code") != 401)
                         throw new IOException("Invalid API probe payload");
                 } catch (org.json.JSONException error) { throw new IOException("Invalid API probe payload"); }
             } else if (response.code() < 200 || response.code() >= 500) {
-                throw new IOException("Unexpected endpoint status");
+                throw new IOException(route.host+" 探测返回 HTTP "+response.code());
             }
         }
     }
@@ -267,24 +280,36 @@ public final class GoogleNetwork extends Application {
         if (!"https".equals(url.getProtocol()) || !DirectNet.googleHost(url.getHost())
                 || (url.getPort() != -1 && url.getPort() != 443) || url.getUserInfo() != null)
             throw new IOException("不允许的 Google 数据地址");
+        final long epoch;
+        final boolean system;
+        synchronized(policyLock){epoch=networkEpoch;system=systemNetwork();}
+        GoogleHttp.Guard current=()->{
+            guard.check();
+            synchronized(policyLock) {
+                if(epoch!=networkEpoch)throw new java.net.SocketException("网络或连接方式已改变，请重新建立连接");
+            }
+        };
+        current.check();
         if (manualIp != null) {
             if (!DirectRoutes.automaticAddress(manualIp)) throw new IOException("手工地址必须是公网 IPv4，不能使用内网、fake-IP 或已确认的第三方中转");
             prepareSpace();
             if(!addressSpace.contains(manualIp))throw new IOException("该地址不属于当前 Google 前端范围");
             DirectRoutes.Route route = new DirectRoutes.Route(url.getHost(),manualIp,DirectRoutes.TlsMode.NORMAL,0);
             OkHttpClient manual = GoogleHttp.direct(base,route);
-            return GoogleHttp.open(url, () -> manual, () -> { }, guard);
+            return GoogleHttp.open(url, () -> manual, () -> { }, current);
         }
-        if (systemNetwork()) return GoogleHttp.open(url,()->base,()->{},guard);
+        if (system) return GoogleHttp.open(url,()->base,()->{},current);
         Set<String> failed = new java.util.HashSet<>();
         DirectRoutes.Route[] selected = new DirectRoutes.Route[1];
         return GoogleHttp.open(url, () -> {
-            prepareSpace();
+            current.check();prepareSpace();
             selected[0] = routes.select(url.getHost(),failed);
-            return directClients.get(selected[0]);
+            current.check();return directClients.get(selected[0]);
         }, () -> {
-            if (selected[0] != null) { failed.add(selected[0].key()); routes.reject(selected[0]); }
-        }, guard);
+            synchronized(policyLock) {
+                if(epoch==networkEpoch&&selected[0]!=null){failed.add(selected[0].key());routes.reject(selected[0]);}
+            }
+        }, current);
     }
     ConnectionCheck.Snapshot connectionCheck(){return check.snapshot();}
     void startCheck() {
@@ -306,6 +331,6 @@ public final class GoogleNetwork extends Application {
         }
         summary = String.join("\n",results);
         if(Thread.currentThread().isInterrupted())throw new java.io.InterruptedIOException("检测已取消");
-        if (failed) throw new IOException(summary);
+        if (failed) throw new ConnectionCheck.CheckFailure("连接检测未全部通过：\n"+summary+"\n请重试或在设置中切换连接方式。");
     }
 }

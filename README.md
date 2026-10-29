@@ -39,7 +39,7 @@ bash tools/check.sh
 
 统一入口执行 Java 检查、debug/preview JVM 测试、编译和 Android Lint；不需要预览私钥。[GitHub Actions](.github/workflows/build-apk.yml) 使用同一入口。只有保留签名可用时才执行 [预览打包器](tools/build-preview-apk.sh)，核对实际包名、版本、提交、签名和根证书包。
 
-0.7.0 本地验证为每变体 110 项 JVM 测试、11 项独立检查及编译/Lint；真实回环 TLS 覆盖 SNI/Host、证书、凭据跳转和回退。**本版手机布局、真实账号和中国运营商网络仍未验收**，不以编译代替使用效果。
+0.7.0 本地验证为每变体 115 项 JVM 测试、11 项独立检查及编译/Lint；真实回环 TLS 覆盖 SNI/Host、证书、凭据跳转和回退。**本版手机布局、真实账号和中国运营商网络仍未验收**，不以编译代替使用效果。
 
 ## 目前的边界
 

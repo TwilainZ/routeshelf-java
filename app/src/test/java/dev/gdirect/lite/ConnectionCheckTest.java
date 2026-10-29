@@ -47,6 +47,11 @@ public final class ConnectionCheckTest {
         ConnectionCheck check=new ConnectionCheck();check.start(()->"old network");terminal(check);check.clearResult();
         assertEquals(ConnectionCheck.State.IDLE,check.snapshot().state);assertEquals("",check.snapshot().detail);
     }
+    @Test public void credentialFreeServiceReportIsRetainedForTroubleshooting()throws Exception {
+        ConnectionCheck check=new ConnectionCheck();String report="www.googleapis.com: no verified route; content: checked";
+        check.start(()->{throw new ConnectionCheck.CheckFailure(report);});
+        assertEquals(ConnectionCheck.State.FAILED,terminal(check).state);assertEquals(report,check.snapshot().detail);
+    }
     @Test public void unexpectedFailureReleasesWorkerForRetry()throws Exception {
         ConnectionCheck check=new ConnectionCheck();check.start(()->{throw new IllegalStateException("internal details");});
         assertEquals(ConnectionCheck.State.FAILED,terminal(check).state);

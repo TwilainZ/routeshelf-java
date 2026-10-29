@@ -10,7 +10,7 @@ Android Studio 打开仓库根目录，安装上述 SDK；或命令行配置 `AN
 bash tools/check.sh
 ```
 
-这会执行 11 项独立 Java 检查、debug/preview JVM 测试、主 debug APK 构建、两变体 Lint，以及离线检查器构建/Lint。不需要预览私钥，不发布 APK，不改变 Google Cloud。测试报告在 app/build/reports/。当前 0.7.0 各变体 110 项 JVM 测试；测试数量会随开发变化。
+这会执行 11 项独立 Java 检查、debug/preview JVM 测试、主 debug APK 构建、两变体 Lint，以及离线检查器构建/Lint。不需要预览私钥，不发布 APK，不改变 Google Cloud。测试报告在 app/build/reports/。当前 0.7.0 各变体 115 项 JVM 测试；测试数量会随开发变化。
 
 ## 源码目录
 

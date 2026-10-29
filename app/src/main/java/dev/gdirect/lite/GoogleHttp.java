@@ -109,9 +109,15 @@ final class GoogleHttp {
             // At most two attempts, and only before a response. No redirects or mutations are replayed.
             int limit="GET".equals(method)?2:1;
             for (int attempt = 0; attempt < limit; attempt++) {
+                guard.check();
                 OkHttpClient client = clients.get().newBuilder().connectTimeout(getConnectTimeout(), TimeUnit.MILLISECONDS)
                     .readTimeout(getReadTimeout(), TimeUnit.MILLISECONDS).writeTimeout(getReadTimeout(),TimeUnit.MILLISECONDS).retryOnConnectionFailure(false)
-                    .followRedirects(false).followSslRedirects(false).build();
+                    .followRedirects(false).followSslRedirects(false)
+                    .addNetworkInterceptor(chain->{
+                        // TLS/discovery may take seconds. Recheck immediately before HTTP headers/body.
+                        if(closed||Thread.currentThread().isInterrupted())throw new java.io.InterruptedIOException("连接已取消");
+                        guard.check();return chain.proceed(chain.request());
+                    }).build();
                 guard.check();
                 okhttp3.RequestBody body=("POST".equals(method)||"PATCH".equals(method)||"PUT".equals(method))
                     ?okhttp3.RequestBody.create(payload.toByteArray(),okhttp3.MediaType.parse(getRequestProperty("Content-Type")==null?"application/json; charset=utf-8":getRequestProperty("Content-Type"))):null;
@@ -120,8 +126,10 @@ final class GoogleHttp {
                 try {
                     response = call.execute(); connected = true; return;
                 } catch (IOException error) {
-                    failed.run();
-                    if (attempt + 1 >= limit || Thread.currentThread().isInterrupted() || closed) throw error;
+                    if(Thread.currentThread().isInterrupted()||closed)throw error;
+                    // Account/policy cancellation does not mean the endpoint itself failed.
+                    guard.check();failed.run();
+                    if (attempt + 1 >= limit) throw error;
                 }
             }
         }

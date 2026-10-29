@@ -6,6 +6,11 @@ import java.io.IOException;
 final class ConnectionCheck {
     enum State { IDLE, RUNNING, CANCELLING, SUCCEEDED, FAILED, CANCELLED }
     interface Work { String run() throws IOException; }
+    /** Only discovery's credential-free, canonical-host report may opt into visible detail. */
+    static final class CheckFailure extends IOException {
+        final String report;
+        CheckFailure(String report){super("Connection check failed");this.report=report.substring(0,Math.min(report.length(),2048));}
+    }
     static final class Snapshot {
         final State state;final String detail;
         Snapshot(State state,String detail){this.state=state;this.detail=detail;}
@@ -20,7 +25,9 @@ final class ConnectionCheck {
         worker=new Thread(()->{
             State outcome=State.SUCCEEDED;String detail="";
             try {detail=work.run();}
-            catch(IOException|RuntimeException failure){outcome=State.FAILED;detail="未能完成连接检测。请检查网络后重试。";}
+            catch(IOException|RuntimeException failure){outcome=State.FAILED;
+                detail=failure instanceof CheckFailure?((CheckFailure)failure).report:"未能完成连接检测。请检查网络后重试。";
+            }
             synchronized(this) {
                 if(snapshot.state==State.CANCELLING||Thread.currentThread().isInterrupted()) {
                     outcome=State.CANCELLED;detail="已取消检测；下次浏览或传输时仍会自动连接。";

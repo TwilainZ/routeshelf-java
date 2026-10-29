@@ -208,6 +208,43 @@ public final class GoogleHttpTest {
             c.setRequestProperty("Authorization","Bearer test-fixture-only");
             assertThrows(DriveSession.AuthorizationRequired.class,c::getResponseCode);
             assertEquals(0,f.server.getRequestCount()); c.disconnect();
+            HttpsURLConnection stale=GoogleHttp.open(f.url(),()->{throw new AssertionError("Expired account must not start discovery");},()->{},lease::requireCurrent);
+            try{assertThrows(DriveSession.AuthorizationRequired.class,stale::getResponseCode);}finally{stale.disconnect();}
+        }
+    }
+
+    @Test public void accountChangeAfterTlsMustBlockHeadersInEveryMode()throws Exception {
+        for(DirectRoutes.TlsMode mode:DirectRoutes.TlsMode.values())try(Fixture f=new Fixture(mode==DirectRoutes.TlsMode.GOOGLE_FRONT?"g.cn":HOST)) {
+            DriveSession session=new DriveSession();session.connect("fixture-token-only");DriveSession.Lease lease=session.lease();
+            AtomicInteger tlsReady=new AtomicInteger(),failures=new AtomicInteger(),selections=new AtomicInteger();
+            OkHttpClient client=f.client(mode,true).newBuilder().addNetworkInterceptor(chain->{
+                tlsReady.incrementAndGet();session.invalidate(lease);return chain.proceed(chain.request());
+            }).build();
+            f.server.enqueue(new MockResponse().setBody("must not arrive"));
+            HttpsURLConnection c=GoogleHttp.open(f.url(),()->{selections.incrementAndGet();return client;},failures::incrementAndGet,lease::requireCurrent);
+            c.setRequestProperty("Authorization","Bearer fixture-token-only");
+            try {assertThrows(DriveSession.AuthorizationRequired.class,c::getResponseCode);
+                assertEquals(1,tlsReady.get());assertEquals(0,f.server.getRequestCount());
+                assertEquals(1,selections.get());assertEquals(0,failures.get());}
+            finally{c.disconnect();}
+        }
+    }
+
+    @Test public void policyChangeDuringTlsBlocksMutationWithoutReplayOrRoutePoisoning()throws Exception {
+        try(Fixture f=new Fixture(HOST)) {
+            java.util.concurrent.atomic.AtomicLong network=new java.util.concurrent.atomic.AtomicLong();long epoch=network.get();
+            AtomicInteger failures=new AtomicInteger(),selections=new AtomicInteger();
+            OkHttpClient client=f.client(DirectRoutes.TlsMode.NORMAL,true).newBuilder().addNetworkInterceptor(chain->{
+                network.incrementAndGet();return chain.proceed(chain.request());
+            }).build();
+            f.server.enqueue(new MockResponse().setBody("{}"));
+            HttpsURLConnection c=GoogleHttp.open(f.url(),()->{selections.incrementAndGet();return client;},failures::incrementAndGet,
+                ()->{if(epoch!=network.get())throw new IOException("Network changed");});
+            c.setRequestMethod("PATCH");c.setDoOutput(true);c.setRequestProperty("Authorization","Bearer fixture-token-only");
+            try(java.io.OutputStream out=c.getOutputStream()){out.write("{}".getBytes(java.nio.charset.StandardCharsets.UTF_8));}
+            try{assertThrows(IOException.class,c::getResponseCode);assertEquals(0,f.server.getRequestCount());
+                assertEquals(1,selections.get());assertEquals(0,failures.get());}
+            finally{c.disconnect();}
         }
     }
 

@@ -54,6 +54,23 @@ public final class GoogleBootstrapTest {
         JSONObject duplicate=new JSONObject(resource()).put("candidates",new JSONArray().put("192.179.60.100").put("192.179.60.100"));
         assertThrows(IOException.class,()->GoogleBootstrap.parse(duplicate.toString()));
     }
+    @Test public void offlineBootstrapKeepsSuccessfulHistoryWithoutSkippingRevalidation()throws Exception {
+        GoogleBootstrap hints=GoogleBootstrap.bundled();String previous="192.179.60.77";
+        List<String> plan=hints.candidates(hints.subset,Arrays.asList("10.0.0.1","183.56.143.147","142.250.40.1",previous));
+        assertEquals(previous,plan.get(0));assertEquals(7,plan.size());
+        DirectRoutesTest.Memory memory=new DirectRoutesTest.Memory();AtomicInteger checks=new AtomicInteger();
+        DirectRoutes routes=new DirectRoutes(host->plan,route->{checks.incrementAndGet();if(!route.ip.equals(previous))throw new IOException("blocked fixture");},memory,text->{});
+        assertTrue(memory.values.isEmpty());assertEquals(previous,routes.select("www.googleapis.com",Collections.emptySet()).ip);assertTrue(checks.get()>0);
+    }
+    @Test public void historyIsBoundedAndCannotCrowdOutBuiltinHintsOrOfficialExclusions()throws Exception {
+        GoogleBootstrap hints=GoogleBootstrap.bundled();java.util.ArrayList<String> history=new java.util.ArrayList<>();
+        for(int i=1;i<200;i++)history.add("192.179.60."+i);
+        GoogleAddressSpace official=GoogleAddressSpace.parse(GoogleAddressSpaceTest.json("192.179.60.0/24","192.179.61.0/24"),GoogleAddressSpaceTest.json("192.179.60.0/25"));
+        List<String> plan=hints.candidates(official,history);assertEquals(5,plan.size());assertEquals("192.179.60.128",plan.get(0));assertEquals("192.179.60.129",plan.get(1));
+        assertTrue(plan.containsAll(hints.candidates(official)));for(String ip:plan)assertTrue(official.contains(ip));
+        assertFalse(plan.contains("192.179.60.77"));assertFalse(plan.contains("192.179.50.100"));
+    }
+
     @Test public void builtinAddressesNeverBecomeRoutesUntilProbeSucceeds()throws Exception {
         GoogleBootstrap hints=GoogleBootstrap.bundled();DirectRoutesTest.Memory memory=new DirectRoutesTest.Memory();AtomicInteger probes=new AtomicInteger();
         DirectRoutes blocked=new DirectRoutes(host->hints.candidates(hints.subset),route->{probes.incrementAndGet();throw new IOException("unavailable fixture");},memory,text->{});
