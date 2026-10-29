@@ -26,7 +26,7 @@
 
 当前尚无公开稳定 Release。不要将 Actions 的离线检查器或随机主 debug 包当作可升级客户端。可交付预览必须通过固定签名打包器验证，并包含 APK-IDENTITY.json 和校验值。
 
-现有测试版身份为 `dev.gdirect.lite.preview`，证书固定在 [preview-signing.json](config/preview-signing.json)。本次版本码 8，可覆盖同签名测试版；与旧主包 `dev.gdirect.lite` 并存。维护者已报告完成 Google 配置，普通更新无需再注册 OAuth，也无需删除旧主版。新开发者的一次性配置见 [Google 设置](docs/GOOGLE_SETUP.md)。
+现有测试版身份为 `dev.gdirect.lite.preview`，证书固定在 [preview-signing.json](config/preview-signing.json)。本次版本码 11，可覆盖同签名测试版；与旧主包 `dev.gdirect.lite` 并存。维护者已报告完成 Google 配置，普通更新无需再注册 OAuth，也无需删除旧主版。新开发者的一次性配置见 [Google 设置](docs/GOOGLE_SETUP.md)。
 
 私钥不进入仓库、APK 或交付 ZIP。缺少原密钥时拒绝交付，不自动生成替代签名。CI 只有匹配的预览密钥 Secret 可用时才发布预览工件；目前未确认该项配置，没有密钥仍可完成源码检查。
 
