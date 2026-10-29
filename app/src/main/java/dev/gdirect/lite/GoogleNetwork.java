@@ -1,5 +1,19 @@
 package dev.gdirect.lite;
 
+import dev.gdirect.lite.diagnostics.DiagnosticLog;
+import dev.gdirect.lite.diagnostics.DiagnosticLogStore;
+import dev.gdirect.lite.network.ConnectionCheck;
+import dev.gdirect.lite.network.DirectNet;
+import dev.gdirect.lite.network.DirectRoutes;
+import dev.gdirect.lite.network.GoogleAddressSpace;
+import dev.gdirect.lite.network.GoogleBootstrap;
+import dev.gdirect.lite.network.GoogleCertificatePolicy;
+import dev.gdirect.lite.network.GoogleDnsDiscovery;
+import dev.gdirect.lite.network.GoogleFrontendScan;
+import dev.gdirect.lite.network.GoogleHttp;
+import dev.gdirect.lite.network.GoogleRangeCatalog;
+import dev.gdirect.lite.network.GoogleTrust;
+
 import android.app.Application;
 import android.content.SharedPreferences;
 import android.net.ConnectivityManager;
@@ -163,8 +177,8 @@ public final class GoogleNetwork extends Application {
             }
         });
     }
-    static GoogleNetwork get() { return instance; }
-    String summary() { return systemNetwork() ? "系统网络：遵循设备的 DNS 和代理设置" : summary; }
+    public static GoogleNetwork get() { return instance; }
+    public String summary() { return systemNetwork() ? "系统网络：遵循设备的 DNS 和代理设置" : summary; }
     boolean systemNetwork() { return preferences.getBoolean("system-network", false); }
     boolean relayEnabled(){return preferences.getBoolean("allow-known-relay",false);}
     String builtInCandidates(){return bootstrap.description();}
@@ -310,10 +324,10 @@ public final class GoogleNetwork extends Application {
         }
     }
 
-    HttpsURLConnection open(URL url, String manualIp) throws IOException {
+    public HttpsURLConnection open(URL url, String manualIp) throws IOException {
         return open(url, manualIp, () -> { });
     }
-    HttpsURLConnection open(URL url, String manualIp, GoogleHttp.Guard guard) throws IOException {
+    public HttpsURLConnection open(URL url, String manualIp, GoogleHttp.Guard guard) throws IOException {
         if (!"https".equals(url.getProtocol()) || !DirectNet.googleHost(url.getHost())
                 || (url.getPort() != -1 && url.getPort() != 443) || url.getUserInfo() != null)
             throw new IOException("不允许的 Google 数据地址");

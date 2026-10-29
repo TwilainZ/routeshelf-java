@@ -16,18 +16,16 @@ bash tools/check.sh
 
 | 路径 | 用途 |
 | --- | --- |
-| app/src/main/java/dev/gdirect/lite/ | 原生界面、Drive API/会话、连接、上传下载与预览 |
-| app/src/main/res/ | 主题、字符串、矢量与启动器资源 |
-| app/src/main/resources/ | 公开 GTS 根证书/许可及有来源的内置候选元数据 |
-| app/src/test/ | JVM 协议、回环 TLS、状态与安全边界测试 |
-| inspector/ | 无 INTERNET 权限的独立旧主包检查器 |
-| tests/ | 无 Android 设备/网络的 Java 检查 |
-| tools/ | 统一检查、签名打包、APK 身份验证与许可清单 |
-| config/ | 公开签名指纹及根证书摘要，不存私钥 |
-| docs/ · design/ | 使用/开发文档和应用图标设计记录 |
-| archive/ | 原始 GPL Java 原型 ZIP，仅历史参考 |
+| app/src/main/java/dev/gdirect/lite/ | Android 入口；辅助类按 auth/network/drive/transfer/preview/diagnostics 分包 |
+| app/src/test/java/dev/gdirect/lite/ | 同职责分包的 JVM 测试 |
+| app/src/main/res/ · assets/ · resources/ | 界面、声明、范围候选与证书资源 |
+| tools/checks/ | 不需要 Android 设备或公网的独立 Java 检查与合成基准 |
+| tools/legacy-inspector/ | 旧主包离线身份检查器，Gradle 项目名仍为 :inspector |
+| tools/ | 统一检查、签名打包、APK 校验与声明生成 |
+| config/ | 公开签名与信任根元数据 |
+| docs/design/ · docs/history/ | 图标来源、历史记录与原始 ZIP |
 
-保持现有 Java 模块的职责边界，不为目录整齐移动协议代码而增加无收益回归风险。后续大型功能再按实际依赖拆分模块。
+客户端保持单一 Gradle 模块，内部以职责子包协作；后续按实际依赖再决定是否需要独立模块。
 
 ## 可安装的测试版
 
@@ -43,10 +41,12 @@ bash tools/build-preview-apk.sh
 
 ## CI 与依赖
 
-GitHub Actions 在 main、dev/** 和 PR 运行统一检查。普通随机 debug 包只用于内部构建；只有匹配保留密钥的 Secret 可生成并发布预览工件。离线 inspector 工件不是登录/文件客户端。构建报告保留在 Actions。
+GitHub Actions 在 main、dev/** 和 PR 运行统一检查。普通随机 debug 包只用于内部构建；只有匹配保留密钥的 Secret 可生成并发布预览工件。旧检查器仅在手动工作流勾选 publish_legacy_inspector 时发布工件；它不是登录/文件客户端。构建报告保留在 Actions。
 
 新增依赖后运行 `python3 tools/refresh-notices.py`，审阅实际许可；证书集合另保留 MPL-2.0。独立测试、编译、Lint 和 CI 不等于手机布局、真实账户或中国网络已通过；交付前对照 [验收清单](ACCEPTANCE.md)。
 
 连接启动性能的本地合成对照：`bash tools/benchmark-relay-startup.sh 1820e38`（需 JDK）。对比相同的 1500ms 模拟元数据阻塞和探测回调，输出冷/热缓存耗时与来源调用次数；不连接公网、不是真实 TLS 或运营商测速。
 
 日志测试覆盖固定字段脱敏、旧缓存重建、并发与限额、清除/恢复竞态、慢磁盘不阻塞记录，以及真实 TLS 中的令牌/URL/正文不进入日志。日志写盘是单线程延迟合并，不在请求或 UI 线程做文件 I/O。
+
+按文件职责定位与调用顺序见 [关键代码导航](ARCHITECTURE.md)。Java 包路径和目录一致，Android 入口组件名称保持原值。

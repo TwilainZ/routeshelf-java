@@ -17,7 +17,7 @@
 
 维护者在本次开发会话中明确选择：**“审核现有代码归属后，改用 Apache-2.0”**。基于上述仓库记录及维护者对其原型的独立实现说明，本次将当前 Git 源码的许可证从 GPL-2.0-or-later 改为 Apache-2.0，完整文本见根目录 `LICENSE`。
 
-旧版本的 GPL 授权仍然有效；`archive/GDirectLiteAndroid-v0.1.0-source.zip` 保留原始字节和内部 GPL 许可证，作为历史基线，不再参与构建。当前 Apache-2.0 声明不改变 Google SDK 或任何第三方组件的条款，也不表示维护者拥有这些组件的版权。
+旧版本的 GPL 授权仍然有效；`docs/history/prototype/GDirectLiteAndroid-v0.1.0-source.zip` 保留原始字节和内部 GPL 许可证，作为历史基线，不再参与构建。当前 Apache-2.0 声明不改变 Google SDK 或任何第三方组件的条款，也不表示维护者拥有这些组件的版权。
 
 ## 后续开发约定
 

@@ -1,4 +1,4 @@
-<img src="design/icon-preview.png" width="88" height="88" alt="GDirect Lite 应用图标">
+<img src="docs/design/icon-preview.png" width="88" height="88" alt="GDirect Lite 应用图标">
 
 # GDirect Lite Android
 
@@ -51,16 +51,19 @@ bash tools/check.sh
 - 文本预览限 512 KiB，图片/PDF 限 64 MiB，音视频限 256 MiB；Google 文档导出限 10 MiB。媒体解码受设备支持影响。
 - 上传同名文件默认新建，不覆盖；Android 前台服务和存储空间限制仍适用。私人内容跳转严格检查目标并剥离凭据，元数据/写操作不自动跟随跳转或盲目重放。
 
-## 仓库结构
+## 仓库结构与关键代码
 
-| 目录 | 内容 |
+| 位置 | 用途 |
 | --- | --- |
-| app/ | Android 客户端及 JVM 测试 |
-| inspector/ | 无联网权限的独立旧主包检查器 |
-| tests/ · tools/ | 独立检查、统一验证、签名打包与许可清单 |
-| config/ | 公开签名指纹和 Google 根证书摘要 |
-| docs/ · design/ | 使用/开发文档、验收、历史记录与图标设计 |
-| archive/ | 原始独立 Java 原型 ZIP，不参与构建 |
+| app/src/main/java/dev/gdirect/lite/ | Android 入口及按职责分包的客户端代码 |
+| app/src/test/java/dev/gdirect/lite/ | 与实现分包对应的协议、TLS、会话和日志测试 |
+| app/src/main/res/ · assets/ · resources/ | 界面与图标、隐私/依赖声明、候选范围与根证书 |
+| tools/ | 构建/验证工具、独立检查及旧主包离线检查器 |
+| config/ | 公开签名指纹与信任根元数据，不存私钥 |
+| docs/ | 使用/开发文档；design/ 为图标资料，history/ 为历史证据和原型 ZIP |
+| gradle/ · Gradle Wrapper | 固定构建工具链 |
+
+连接入口是 [GoogleNetwork](app/src/main/java/dev/gdirect/lite/GoogleNetwork.java)，选线在 [network/DirectRoutes](app/src/main/java/dev/gdirect/lite/network/DirectRoutes.java)，TLS 与 HTTP 在 [network/GoogleHttp](app/src/main/java/dev/gdirect/lite/network/GoogleHttp.java)。完整职责和阅读顺序见 [关键代码导航](docs/ARCHITECTURE.md)。
 
 ## 许可与贡献
 

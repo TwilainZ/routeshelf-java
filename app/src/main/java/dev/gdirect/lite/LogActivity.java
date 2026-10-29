@@ -1,5 +1,7 @@
 package dev.gdirect.lite;
 
+import dev.gdirect.lite.diagnostics.DiagnosticLog;
+
 import android.content.Intent;
 import android.os.Bundle;
 import android.view.Menu;

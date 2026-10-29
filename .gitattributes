@@ -4,3 +4,5 @@
 *.zip binary
 *.jar binary
 app/src/main/assets/third-party-notices.txt linguist-generated=true
+tools/legacy-inspector/src/main/assets/third-party-notices.txt linguist-generated=true
+docs/history/prototype/*.zip linguist-vendored=true

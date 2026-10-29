@@ -1,5 +1,11 @@
 # 更新记录
 
+## 仓库结构整理（版本与运行行为不变）
+
+- Java 辅助代码按 network、drive、auth、transfer、diagnostics、preview 分包，测试按同样职责归类；Android 入口组件名、applicationId、原测试版签名与持久数据位置保持兼容。
+- 独立检查集中 tools/checks，旧主包检查器移入 tools/legacy-inspector；原型 ZIP 原字节保存在 docs/history/prototype，图标设计资料归入 docs/design。
+- 移除退出构建流程的临时 debug 密钥生成脚本，以及 Lint 确认无引用的旧上传图标和四条旧界面文案。更新构建、CI、打包校验、许可路径和关键代码导航；旧检查器仅在手动工作流明确勾选时发布工件。
+
 ## 0.7.2-logs-preview（versionCode 11）
 
 - 设置新增“连接日志与反馈”：刷新、复制、通过系统文件选择器保存 TXT、确认后清空。不自动上传日志。

@@ -61,19 +61,28 @@ with zipfile.ZipFile(args.apk) as apk:
     dex = [apk.read(name) for name in apk.namelist() if re.fullmatch(r'classes\d*\.dex', name)]
     required_code = [args.revision]
     if not args.probe:
-        required_code += ['Ldev/gdirect/lite/SettingsActivity;', 'Ldev/gdirect/lite/ConnectionCheck;', 'Ldev/gdirect/lite/LogActivity;', 'Ldev/gdirect/lite/DiagnosticLog;', 'Ldev/gdirect/lite/DiagnosticLogStore;']
+        required_code += ['Ldev/gdirect/lite/SettingsActivity;', 'Ldev/gdirect/lite/network/ConnectionCheck;', 'Ldev/gdirect/lite/LogActivity;', 'Ldev/gdirect/lite/diagnostics/DiagnosticLog;', 'Ldev/gdirect/lite/diagnostics/DiagnosticLogStore;']
     if args.probe:
         required_code.append('Ldev/gdirect/lite/probe/PackageProbeActivity;')
         for forbidden in ('Ldev/gdirect/lite/DriveActivity;', 'Ldev/gdirect/lite/DownloadService;', 'Lcom/google/android/gms/auth/api/identity/AuthorizationClient;'):
             if any(forbidden.encode('ascii') in part for part in dex):
                 raise SystemExit('Offline inspector contains login/download code: ' + forbidden)
     else:
-        required_code.extend(('Ldev/gdirect/lite/AuthorizationCallback;', 'Ldev/gdirect/lite/AppDiagnostics;',
-                              'Ldev/gdirect/lite/GoogleNetwork;', 'Ldev/gdirect/lite/GoogleBootstrap;', 'Ldev/gdirect/lite/DirectRoutes;',
-                              'Ldev/gdirect/lite/GoogleHttp;', 'Ldev/gdirect/lite/GoogleAddressSpace;',
-                              'Ldev/gdirect/lite/GoogleRangeCatalog;', 'Ldev/gdirect/lite/GoogleFrontendScan;',
-                              'Ldev/gdirect/lite/GoogleCertificatePolicy;', 'Ldev/gdirect/lite/GoogleTrust;', 'Ldev/gdirect/lite/UploadTransfer;',
+        required_code.extend(('Ldev/gdirect/lite/auth/AuthorizationCallback;', 'Ldev/gdirect/lite/diagnostics/AppDiagnostics;',
+                              'Ldev/gdirect/lite/GoogleNetwork;', 'Ldev/gdirect/lite/network/GoogleBootstrap;', 'Ldev/gdirect/lite/network/DirectRoutes;',
+                              'Ldev/gdirect/lite/network/GoogleHttp;', 'Ldev/gdirect/lite/network/GoogleAddressSpace;',
+                              'Ldev/gdirect/lite/network/GoogleRangeCatalog;', 'Ldev/gdirect/lite/network/GoogleFrontendScan;',
+                              'Ldev/gdirect/lite/network/GoogleCertificatePolicy;', 'Ldev/gdirect/lite/network/GoogleTrust;', 'Ldev/gdirect/lite/transfer/UploadTransfer;',
                               'Ldev/gdirect/lite/FilePreviewActivity;'))
+    if not args.probe:
+        source_root = Path(__file__).resolve().parents[1] / 'app/src/main/java/dev/gdirect/lite'
+        # A package move must not leave old incremental-build classes in the installable APK.
+        for helper in source_root.glob('*/*.java'):
+            if (source_root / helper.name).exists():
+                continue  # An explicit compatibility entrypoint is intentional.
+            obsolete = ('Ldev/gdirect/lite/' + helper.stem + ';').encode('ascii')
+            if any(obsolete in part for part in dex):
+                raise SystemExit('Obsolete pre-organization class is still packaged: ' + helper.stem)
     for value in required_code:
         if not any(value.encode('ascii') in part for part in dex):
             raise SystemExit('Expected diagnostic code/revision not present in APK: ' + value)

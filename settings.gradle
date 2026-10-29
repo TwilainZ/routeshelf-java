@@ -16,3 +16,4 @@ rootProject.name = 'GDirectLite'
 include ':app'
 
 include ':inspector'
+project(':inspector').projectDir = file('tools/legacy-inspector')

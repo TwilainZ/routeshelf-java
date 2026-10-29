@@ -1,12 +1,9 @@
 <resources>
-    <string name="connection_settings">连接设置与线路状态</string>
     <string name="drive_preview_full_media">预览会先读取完整文件（%1$s），并临时保存到应用缓存。继续预览？</string>
     <string name="drive_revoke_connect">请先连接要撤销的 Google 账号，再撤销当前会话授权；也可直接到 Google 账号的第三方访问设置中移除应用。</string>
     <string name="drive_folder_depth">浏览路径超过 100 层，请返回上级或使用搜索。</string>
     <string name="drive_privacy">隐私与数据使用</string>
     <string name="drive_privacy_unavailable">暂时无法读取隐私说明，请查看项目文档。</string>
-    <string name="drive_access_manage">访问模式：文件管理</string>
-    <string name="drive_access_readonly">访问模式：只读浏览（文件管理需另行授权）</string>
     <string name="drive_media_error">设备不支持播放此音视频，或文件内容无效；可下载后使用其他播放器打开。</string>
     <string name="drive_more_actions">更多</string>
     <string name="drive_action_named">%1$s：%2$s</string>
@@ -81,7 +78,6 @@
     <string name="auth_failure_with_build">%1$s\n\n%2$s</string>
     <string name="diagnostics_title">应用与授权诊断</string>
     <string name="diagnostics_copy">复制诊断信息</string>
-    <string name="drive_title">我的 Google Drive</string>
     <string name="drive_root">我的云端硬盘</string>
     <string name="drive_consent">连接 Google Drive 后查看、预览和下载文件。默认只读；上传和管理时再请求额外权限。授权由 Google 完成，可随时断开。</string>
     <string name="drive_connect">连接 Google Drive</string>

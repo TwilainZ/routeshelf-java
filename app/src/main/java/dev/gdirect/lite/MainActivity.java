@@ -1,5 +1,7 @@
 package dev.gdirect.lite;
 
+import dev.gdirect.lite.network.DirectNet;
+
 import android.Manifest;
 import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.material.button.MaterialButton;

@@ -26,7 +26,7 @@ Current local baseline: 134 JVM tests per debug/preview variant, 11 standalone p
 
 Preserve dev.gdirect.lite.preview, the retained private key outside Git, and config/preview-signing.json. Ordinary updates must not require new OAuth registration. The owner reported completing Cloud/preview configuration and has only a phone: do not restart Cloud setup, change package/key, repeatedly give intermediate APKs, or ask them for a new registration on each update.
 
-Old dev.gdirect.lite has another signer whose private key is unavailable in the current environment; a different main-package signer cannot upgrade it. Do not claim the exact history of key loss is established or recommend uninstalling the working app by default. The separate inspector has no network/auth flow and only checks that old main package.
+Old dev.gdirect.lite has another signer whose private key is unavailable in the current environment; a different main-package signer cannot upgrade it. Do not claim the exact history of key loss is established or recommend uninstalling the working app by default. The separate inspector in tools/legacy-inspector/ has no network/auth flow and only checks that old main package.
 
 Deliver only committed clean source through tools/build-preview-apk.sh with GDIRECT_PREVIEW_KEYSTORE_PATH. Missing/wrong retained key blocks delivery; never generate a replacement key. Validate packaged package/version/revision/signature and GTS roots. Private keys never enter Git, APK, ZIP, logs, chat or PR. Current cloud retention is confirmed, but independent external backup and CI Secret setup are not; do not promise permanent backup.
 
@@ -40,6 +40,12 @@ Local DiagnosticLog is capped at 512 entries/128 KiB, stored privately with coal
 - Shared access, destructive deletion and network mode consent must correspond to clear user actions. Never send unsolicited external messages through tools.
 - Cloud tests follow environment network policy; no raw public-IP probing, proxy bypass or using CI as a fetch proxy. Distinguish loopback evidence from device/network tests.
 - UI direction is close to Google Drive using own assets and Android Material components, with day/night, 48dp touch targets, font scaling, IME/system insets and accessible states. Do not invent features or claims to fill the interface.
+
+## Source layout
+
+Android component entrypoints remain in app/src/main/java/dev/gdirect/lite/ to preserve component identity. Helpers and matching JVM tests use auth/, network/, drive/, transfer/, preview/ and diagnostics/ packages. See docs/ARCHITECTURE.md for key code. Keep internal state private and cross-package APIs narrow; public Java APIs are in-process, not exported Android components.
+
+The original ZIP now lives in docs/history/prototype/ with identical bytes. Icon design sources are in docs/design/. Standalone checks are in tools/checks/, and the offline legacy inspector is in tools/legacy-inspector/ (Gradle :inspector). The retired temporary-key generation script is removed; only the retained preview key is used for delivery.
 
 ## Workflow
 

@@ -5,5 +5,5 @@ The application's own source is licensed under Apache License 2.0.
 Third-party components retain their own licenses and notices.
 See THIRD_PARTY_NOTICES.md and the notices bundled in the APK.
 
-The historical v0.1.0 ZIP in archive/ retains the license distributed inside it.
+The historical v0.1.0 ZIP in docs/history/prototype/ retains the license distributed inside it.
 Google and the author of mizorewww/gdirect do not endorse this application.

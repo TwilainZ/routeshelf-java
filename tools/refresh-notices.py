@@ -95,7 +95,7 @@ Test-only dependencies (not shipped in the APK): JUnit 4.13.2 (EPL-1.0),
 Hamcrest Core 1.3 (BSD-3-Clause), and Vaadin's Android JSON port
 0.0.20131108.vaadin1 (Apache-2.0), plus OkHttp MockWebServer and okhttp-tls
 4.12.0 (Apache-2.0). No implementation from mizorewww/gdirect or its
-aria2 patches is included. The historical ZIP in archive/ retains its GPL license.
+aria2 patches is included. The historical ZIP in docs/history/prototype/ retains its GPL license.
 
 Bundled component license/copyright/notice texts and the Apache-2.0 license are
 preserved in `app/src/main/assets/third-party-notices.txt`, accessible from the
@@ -106,16 +106,17 @@ if args.module == 'inspector':
     footer = footer.replace('Test-only dependencies (not shipped in the APK):',
                             "The main application's test-only dependencies (not shipped in this APK):")
     footer = footer.split('Bundled component license/copyright/notice texts')[0] + """Bundled component license/copyright/notice texts and the Apache-2.0 license are
-preserved in `inspector/src/main/assets/third-party-notices.txt` inside the APK.
+preserved in `tools/legacy-inspector/src/main/assets/third-party-notices.txt` inside the APK.
 This module has no Google authorization or download implementation.
 """
 if args.module == 'app':
     footer += "\nPublic GTS Root R1–R4 certificates: Mozilla NSS root collection subset (MPL-2.0).\nSee docs/TRUST_ROOTS.md and app/src/main/resources/gts-roots.LICENSE; no CA private keys are included.\n"
     bundled.append((root / "app/src/main/resources/gts-roots.LICENSE").read_text())
 inventory = header + "\n".join(rows) + "\n" + footer
-notice_path = root / ('THIRD_PARTY_NOTICES.md' if args.module == 'app' else 'inspector/THIRD_PARTY_NOTICES.md')
+notice_path = root / ('THIRD_PARTY_NOTICES.md' if args.module == 'app' else 'tools/legacy-inspector/THIRD_PARTY_NOTICES.md')
 notice_path.write_text(inventory)
-asset = root / args.module / "src/main/assets/third-party-notices.txt"
+module_dir = root / ('tools/legacy-inspector' if args.module == 'inspector' else 'app')
+asset = module_dir / "src/main/assets/third-party-notices.txt"
 asset.parent.mkdir(parents=True, exist_ok=True)
 asset.write_text(inventory + "\n\n" + (root / "NOTICE").read_text()
                  + "\n\n" + (root / "LICENSE").read_text() + "\n\n" + "\n".join(bundled).rstrip() + "\n")
