@@ -4,7 +4,7 @@
 
 独立开发的 Android Google Drive 客户端：浏览、预览、管理和传输文件，并自动寻找当前网络可用的数据连接。界面采用熟悉的 Material 搜索、底部导航和文件操作。
 
-**当前：0.7.0-settings-preview · Android 10+ · Java · 开发预览。** 非 Google 官方应用。功能思路受 mizorewww/gdirect 启发，未移植其源码、aria2 补丁、种子或界面资产。
+**当前：0.7.1-connection-preview · Android 10+ · Java · 开发预览。** 非 Google 官方应用。功能思路受 mizorewww/gdirect 启发，未移植其源码、aria2 补丁、种子或界面资产。
 
 [文档导航](docs/README.md) · [开发构建](docs/DEVELOPMENT.md) · [Google 配置](docs/GOOGLE_SETUP.md) · [验收清单](docs/ACCEPTANCE.md) · [更新记录](CHANGELOG.md)
 
@@ -16,7 +16,7 @@
 - **上传下载**：公开单文件链接无需登录；私人传输、前台进度、取消、大小/可用 MD5 校验及 Downloads 保存。强 ETag/Range 条件满足时安全分块续传；上传按服务端确认偏移恢复当前会话。
 - **自动连接**：官方 IPv4 范围优先、内置公开报告候选、DNS/历史候选、按需扩大的移动端探测、备用 IP/TLS 组合。支持正常 SNI、无 SNI 和固定 g.cn 前端身份，仅信任 Google GTS 根；已知第三方中转只在明确允许后作为候选。
 
-“⋮ → 设置 → 连接”中的“查看内置 Google IP 候选”显示地址、日期和来源，无需手工找 IP。
+“⋮ → 设置 → 连接”中的“查看内置 Google IP 候选”显示地址、日期和来源，无需手工找 IP。 已同意中转的用户可选择“连接方式 → 自动连接 · 优先已知中转”：先验证旧版使用的固定中转，成功不等待地址列表/DNS，失败再寻找 Google 前端；“仅 Google”仍完全排除中转。
 
 顶部搜索、底部“首页/星标/共享/文件”、类型图标与右下角“新建”组成主流程。文件范围标题可选择回收站等范围；菜单只保留刷新、排序、公开链接下载、传输和设置；账户权限、连接、下载偏好、隐私及诊断统一放在设置页。支持日夜主题及 Android 自适应/主题启动器图标。
 
@@ -39,7 +39,7 @@ bash tools/check.sh
 
 统一入口执行 Java 检查、debug/preview JVM 测试、编译和 Android Lint；不需要预览私钥。[GitHub Actions](.github/workflows/build-apk.yml) 使用同一入口。只有保留签名可用时才执行 [预览打包器](tools/build-preview-apk.sh)，核对实际包名、版本、提交、签名和根证书包。
 
-0.7.0 本地验证为每变体 115 项 JVM 测试、11 项独立检查及编译/Lint；真实回环 TLS 覆盖 SNI/Host、证书、凭据跳转和回退。**本版手机布局、真实账号和中国运营商网络仍未验收**，不以编译代替使用效果。
+0.7.1 本地验证为每变体 120 项 JVM 测试、11 项独立检查及编译/Lint；真实回环 TLS 覆盖 SNI/Host、证书、凭据跳转和回退。**本版手机布局、真实账号和中国运营商网络仍未验收**，不以编译代替使用效果。
 
 ## 目前的边界
 

@@ -67,7 +67,8 @@ public final class GoogleNetwork extends Application {
             }
         },name->GoogleRangeCatalog.download(base,name));
         routes = new DirectRoutes(new DirectRoutes.Candidates(){
-            public List<String> get(String host)throws IOException{return candidates(host);}
+            public List<String> preferred(String host){return relayEnabled()?Collections.singletonList(KNOWN_RELAY):Collections.emptyList();}
+            public List<String> get(String host)throws IOException{prepareSpace();return candidates(host);}
             public List<String> expand(String host,List<String> observed)throws IOException{return expandedCandidates(observed);}
         }, this::probe, new DirectRoutes.Store() {
             @Override public DirectRoutes.Route load(String host) {
@@ -302,7 +303,7 @@ public final class GoogleNetwork extends Application {
         Set<String> failed = new java.util.HashSet<>();
         DirectRoutes.Route[] selected = new DirectRoutes.Route[1];
         return GoogleHttp.open(url, () -> {
-            current.check();prepareSpace();
+            current.check();if(!relayEnabled())prepareSpace();
             selected[0] = routes.select(url.getHost(),failed);
             current.check();return directClients.get(selected[0]);
         }, () -> {
@@ -319,7 +320,7 @@ public final class GoogleNetwork extends Application {
     void cancelCheck(){check.cancel();}
     void checkRoutes() throws IOException {
         if(Thread.currentThread().isInterrupted())throw new java.io.InterruptedIOException("检测已取消");
-        prepareSpace();
+        if(!relayEnabled())prepareSpace();
         List<String> results = new ArrayList<>();
         boolean failed = false;
         for (String host : new String[]{"www.googleapis.com","drive.usercontent.google.com"}) {

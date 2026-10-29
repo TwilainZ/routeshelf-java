@@ -29,6 +29,7 @@ final class DirectRoutes {
     }
     interface Candidates {
         List<String> get(String host) throws IOException;
+        default List<String> preferred(String host)throws IOException{return java.util.Collections.emptyList();}
         default List<String> expand(String host,List<String> observed)throws IOException{return java.util.Collections.emptyList();}
     }
     interface Probe { void check(Route route) throws IOException; }
@@ -141,6 +142,15 @@ final class DirectRoutes {
             if (recent != null && System.nanoTime() - recent < TimeUnit.SECONDS.toNanos(10))
                 throw new IOException("刚才未找到可用直连线路；请稍后重试或点重新检测直连");
             long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(budgetMillis);
+            // An explicitly allowed fixed endpoint needs no Google-ownership catalog or DNS.
+            // Bound its head start; failed preference must leave time for normal discovery.
+            LinkedHashSet<String> preferred=new LinkedHashSet<>();
+            for(String ip:candidates.preferred(host))if(permitted.test(ip)){preferred.add(ip);if(preferred.size()==2)break;}
+            if(!preferred.isEmpty()) {
+                Route immediate=verify(host,preferred,failed,now,epoch,
+                    Math.min(deadline,System.nanoTime()+TimeUnit.MILLISECONDS.toNanos(Math.min(2500,Math.max(1,budgetMillis/4)))),0);
+                if(immediate!=null)return immediate;
+            }
             observer.update("正在自动收集 " + host + " 的候选线路…");
             LinkedHashSet<String> ips = new LinkedHashSet<>();
             if (cached != null && permitted.test(cached.ip)) ips.add(cached.ip);
@@ -161,6 +171,9 @@ final class DirectRoutes {
     }
 
     private Route verify(String host,Set<String> ips,Set<String> failed,long now,long epoch,long deadline)throws IOException {
+        return verify(host,ips,failed,now,epoch,deadline,800);
+    }
+    private Route verify(String host,Set<String> ips,Set<String> failed,long now,long epoch,long deadline,long collectMillis)throws IOException {
         List<Route> attempts = new ArrayList<>();
         // Identity alternatives enter the bounded queue; a blocked mode cannot starve every other mode.
         for (String ip : ips) for (TlsMode mode : TlsMode.values()) {
@@ -194,7 +207,7 @@ final class DirectRoutes {
                     }
                     failures.remove(host);
                     observer.update(description(verified.get(0), false));
-                    if(verified.size()==1)collectUntil=Math.min(deadline,System.nanoTime()+TimeUnit.MILLISECONDS.toNanos(800));
+                    if(verified.size()==1)collectUntil=Math.min(deadline,System.nanoTime()+TimeUnit.MILLISECONDS.toNanos(collectMillis));
                     if(verified.size()>=8)return verified.get(0);
                 } catch (java.util.concurrent.ExecutionException error) {
                     // Only counts/canonical host enter diagnostics, never request URLs or tokens.

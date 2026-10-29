@@ -41,6 +41,58 @@ public final class DirectRoutesTest {
         routes.reject(first);DirectRoutes.Route backup=routes.select(HOST,Collections.singleton(first.key()));
         assertNotEquals(first.ip,backup.ip);assertEquals(1,discoveries.get());
     }
+    @Test public void consentedRelaySucceedsBeforeCatalogDnsOrExpansion()throws Exception {
+        String relay="183.56.143.147";AtomicInteger probes=new AtomicInteger();
+        DirectRoutes.Candidates source=new DirectRoutes.Candidates(){
+            public java.util.List<String> preferred(String host){return Collections.singletonList(relay);}
+            public java.util.List<String> get(String host){throw new AssertionError("Catalog/DNS must not block working relay");}
+            public java.util.List<String> expand(String host,java.util.List<String> observed){throw new AssertionError("Unexpected scan");}
+        };
+        Memory memory=new Memory();DirectRoutes routes=new DirectRoutes(source,route->{
+            probes.incrementAndGet();if(route.tls!=DirectRoutes.TlsMode.GOOGLE_FRONT)throw new IOException("blocked TLS mode");
+        },memory,message->{},1000,relay::equals);
+        assertEquals(relay,routes.select(HOST,Collections.emptySet()).ip);assertTrue(probes.get()>0);
+        assertEquals(relay,memory.load(HOST).ip);
+    }
+    @Test public void failedPreferredRelayFallsBackToNormalGoogleDiscovery()throws Exception {
+        String relay="183.56.143.147";AtomicInteger catalogs=new AtomicInteger();
+        DirectRoutes.Candidates source=new DirectRoutes.Candidates(){
+            public java.util.List<String> preferred(String host){return Collections.singletonList(relay);}
+            public java.util.List<String> get(String host){catalogs.incrementAndGet();return Collections.singletonList("8.8.8.8");}
+        };
+        DirectRoutes routes=new DirectRoutes(source,route->{if(route.ip.equals(relay))throw new IOException("relay down");},new Memory(),message->{},2000,DirectRoutes::publicIpv4);
+        assertEquals("8.8.8.8",routes.select(HOST,Collections.emptySet()).ip);assertEquals(1,catalogs.get());
+    }
+    @Test public void relayPreferenceCannotOverrideGoogleOnlyPermission()throws Exception {
+        String relay="183.56.143.147";
+        DirectRoutes.Candidates source=new DirectRoutes.Candidates(){
+            public java.util.List<String> preferred(String host){return Collections.singletonList(relay);}
+            public java.util.List<String> get(String host){return Collections.singletonList("8.8.8.8");}
+        };
+        DirectRoutes routes=new DirectRoutes(source,route->{assertNotEquals(relay,route.ip);},new Memory(),message->{});
+        assertEquals("8.8.8.8",routes.select(HOST,Collections.emptySet()).ip);
+    }
+    @Test public void stalledPreferenceLeavesBudgetForGoogleFallback()throws Exception {
+        String relay="183.56.143.147";
+        DirectRoutes.Candidates source=new DirectRoutes.Candidates(){
+            public java.util.List<String> preferred(String host){return Collections.singletonList(relay);}
+            public java.util.List<String> get(String host){return Collections.singletonList("8.8.8.8");}
+        };
+        DirectRoutes routes=new DirectRoutes(source,route->{if(route.ip.equals(relay))try{new CountDownLatch(1).await();}catch(InterruptedException e){Thread.currentThread().interrupt();throw new IOException(e);}},new Memory(),message->{},1200,DirectRoutes::publicIpv4);
+        assertEquals("8.8.8.8",routes.select(HOST,Collections.emptySet()).ip);
+    }
+    @Test public void cancellationDuringPreferredProbeSkipsExpensiveDiscovery()throws Exception {
+        String relay="183.56.143.147";CountDownLatch entered=new CountDownLatch(1);Memory memory=new Memory();
+        DirectRoutes.Candidates source=new DirectRoutes.Candidates(){
+            public java.util.List<String> preferred(String host){return Collections.singletonList(relay);}
+            public java.util.List<String> get(String host){throw new AssertionError("Cancelled check started catalog/DNS");}
+        };
+        DirectRoutes routes=new DirectRoutes(source,route->{entered.countDown();try{new CountDownLatch(1).await();}catch(InterruptedException e){throw new IOException(e);}},memory,message->{},4000,relay::equals);
+        AtomicReference<Throwable> result=new AtomicReference<>();Thread worker=new Thread(()->{try{routes.select(HOST,Collections.emptySet());}catch(Throwable e){result.set(e);}});
+        worker.start();assertTrue(entered.await(2,TimeUnit.SECONDS));worker.interrupt();worker.join(2000);
+        assertFalse(worker.isAlive());assertTrue(result.get() instanceof java.io.InterruptedIOException);assertTrue(memory.values.isEmpty());
+    }
+
     static final String HOST = "www.googleapis.com";
     static class Memory implements DirectRoutes.Store {
         final Map<String,DirectRoutes.Route> values = new ConcurrentHashMap<>();

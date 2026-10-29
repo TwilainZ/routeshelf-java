@@ -153,7 +153,7 @@ public final class SettingsActivity extends AppCompatActivity {
     private void chooseMode() {
         GoogleNetwork net=GoogleNetwork.get();int selected=net.systemNetwork()?2:net.relayEnabled()?1:0;
         new MaterialAlertDialogBuilder(this).setTitle("连接方式")
-            .setSingleChoiceItems(new String[]{"自动直连 · 仅 Google（默认）","自动直连 · 允许已知中转","系统网络"},selected,(d,n)->{
+            .setSingleChoiceItems(new String[]{"自动直连 · 仅 Google（默认）","自动连接 · 优先已知中转","系统网络"},selected,(d,n)->{
                 d.dismiss();if(n==selected)return;
                 if(n==1)new MaterialAlertDialogBuilder(this).setTitle(R.string.relay_title).setMessage(R.string.relay_explanation)
                     .setNegativeButton(android.R.string.cancel,null).setPositiveButton(R.string.relay_allow,(a,b)->applyMode(1)).show();
@@ -174,7 +174,7 @@ public final class SettingsActivity extends AppCompatActivity {
     private void render() {
         GoogleNetwork net=GoogleNetwork.get();ConnectionCheck.Snapshot state=net.connectionCheck();
         boolean busy=state.active(),transfer=DownloadService.snapshot.active;
-        mode.setText("连接方式\n"+(net.systemNetwork()?"系统网络":net.relayEnabled()?"自动直连 · 允许已知中转":"自动直连 · 仅 Google"));mode.setEnabled(!busy&&!transfer);
+        mode.setText("连接方式\n"+(net.systemNetwork()?"系统网络":net.relayEnabled()?"自动连接 · 优先已知中转":"自动直连 · 仅 Google"));mode.setEnabled(!busy&&!transfer);
         String detail=state.detail.isEmpty()?net.summary():state.detail;
         if(state.state==ConnectionCheck.State.SUCCEEDED)detail="上次检测完成\n"+state.detail;
 

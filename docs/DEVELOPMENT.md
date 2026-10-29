@@ -10,7 +10,7 @@ Android Studio 打开仓库根目录，安装上述 SDK；或命令行配置 `AN
 bash tools/check.sh
 ```
 
-这会执行 11 项独立 Java 检查、debug/preview JVM 测试、主 debug APK 构建、两变体 Lint，以及离线检查器构建/Lint。不需要预览私钥，不发布 APK，不改变 Google Cloud。测试报告在 app/build/reports/。当前 0.7.0 各变体 115 项 JVM 测试；测试数量会随开发变化。
+这会执行 11 项独立 Java 检查、debug/preview JVM 测试、主 debug APK 构建、两变体 Lint，以及离线检查器构建/Lint。不需要预览私钥，不发布 APK，不改变 Google Cloud。测试报告在 app/build/reports/。当前 0.7.1 各变体 120 项 JVM 测试；测试数量会随开发变化。
 
 ## 源码目录
 
@@ -46,3 +46,5 @@ bash tools/build-preview-apk.sh
 GitHub Actions 在 main、dev/** 和 PR 运行统一检查。普通随机 debug 包只用于内部构建；只有匹配保留密钥的 Secret 可生成并发布预览工件。离线 inspector 工件不是登录/文件客户端。构建报告保留在 Actions。
 
 新增依赖后运行 `python3 tools/refresh-notices.py`，审阅实际许可；证书集合另保留 MPL-2.0。独立测试、编译、Lint 和 CI 不等于手机布局、真实账户或中国网络已通过；交付前对照 [验收清单](ACCEPTANCE.md)。
+
+连接启动性能的本地合成对照：`bash tools/benchmark-relay-startup.sh 1820e38`（需 JDK）。对比相同的 1500ms 模拟元数据阻塞和探测回调，输出冷/热缓存耗时与来源调用次数；不连接公网、不是真实 TLS 或运营商测速。
