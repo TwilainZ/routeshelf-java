@@ -35,6 +35,7 @@
             android:name=".DownloadService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+        <activity android:name=".SettingsActivity" android:exported="false" android:theme="@style/MainTheme" />
         <activity android:name=".DriveActivity" android:exported="false" android:theme="@style/MainTheme"
             android:enableOnBackInvokedCallback="true" />
         <activity android:name=".FilePreviewActivity" android:exported="false" android:theme="@style/DriveTheme" />

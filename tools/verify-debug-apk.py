@@ -30,8 +30,8 @@ def command(*parts):
 badging = command(args.aapt2, 'dump', 'badging', str(args.apk))
 package = re.search(r"package: name='([^']+)' versionCode='([^']+)' versionName='([^']+)'", badging)
 expected_package = 'dev.gdirect.lite.probe' if args.probe else ('dev.gdirect.lite.preview' if args.preview else 'dev.gdirect.lite')
-expected_version = '0.2.1-diagnostic-probe' if args.probe else '0.6.1-bootstrap-preview'
-expected_code = '3' if args.probe else '8'
+expected_version = '0.2.1-diagnostic-probe' if args.probe else '0.7.0-settings-preview'
+expected_code = '3' if args.probe else '9'
 if not package or package.groups() != (expected_package, expected_code, expected_version):
     raise SystemExit('APK package or diagnostic version does not match the expected build')
 if args.probe and re.search(r"uses-permission(?:-sdk-\d+)?: name='android.permission.INTERNET'", badging):
@@ -43,7 +43,7 @@ if '已取消授权；未连接 Google Drive' in resources:
     raise SystemExit('Old cancellation-only error message is still packaged in the APK')
 required_resources = ('probe_title', 'probe_explanation') if args.probe else (
     'build_identity', 'diagnostics_title', 'drive_auth_no_result', 'drive_auth_status',
-    'drive_nav_home', 'drive_create', 'ic_launcher_art', 'ic_launcher_monochrome', 'builtin_google_candidates')
+    'drive_nav_home', 'drive_create', 'ic_launcher_art', 'ic_launcher_monochrome', 'builtin_google_candidates', 'settings_title')
 for resource in required_resources:
     if resource not in resources:
         raise SystemExit('Missing diagnostic resource: ' + resource)
@@ -60,6 +60,8 @@ with zipfile.ZipFile(args.apk) as apk:
             raise SystemExit('Google root certificate source/license notice is missing')
     dex = [apk.read(name) for name in apk.namelist() if re.fullmatch(r'classes\d*\.dex', name)]
     required_code = [args.revision]
+    if not args.probe:
+        required_code += ['Ldev/gdirect/lite/SettingsActivity;', 'Ldev/gdirect/lite/ConnectionCheck;']
     if args.probe:
         required_code.append('Ldev/gdirect/lite/probe/PackageProbeActivity;')
         for forbidden in ('Ldev/gdirect/lite/DriveActivity;', 'Ldev/gdirect/lite/DownloadService;', 'Lcom/google/android/gms/auth/api/identity/AuthorizationClient;'):

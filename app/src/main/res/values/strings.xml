@@ -132,4 +132,5 @@
     <string name="relay_title">允许第三方中转？</string>
     <string name="relay_explanation">已知中转 183.56.143.147 由第三方运营，并非 Google。原作者报告它转发加密连接；本应用仍只接受 Google GTS 根证书并验证 TLS 名称。中转运营者可看到你的 IP、流量大小和连接时间；部分模式也会暴露服务域名。可用性和运营方式可能改变。允许后会将它作为候选，随时可切回“仅 Google 前端”。</string>
     <string name="relay_allow">允许作为连接候选</string>
+    <string name="settings_title">设置</string>
 </resources>

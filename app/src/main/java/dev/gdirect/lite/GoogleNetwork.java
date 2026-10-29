@@ -28,6 +28,7 @@ public final class GoogleNetwork extends Application {
     static final String KNOWN_RELAY="183.56.143.147";
     private SharedPreferences preferences;
     private DirectRoutes routes;
+    private final ConnectionCheck check=new ConnectionCheck();
     private GoogleRangeCatalog catalog;
     private GoogleBootstrap bootstrap;
     private volatile boolean bootstrapOnly;
@@ -127,11 +128,11 @@ public final class GoogleNetwork extends Application {
         connectivity.registerDefaultNetworkCallback(new ConnectivityManager.NetworkCallback() {
             private Network current;
             @Override public void onAvailable(Network network) {
-                if (current != null && !network.equals(current)) reset();
+                if (current != null && !network.equals(current)) {check.cancel();check.clearResult();reset();summary="网络已切换，下次浏览或传输时自动检测";}
                 current = network;
             }
             @Override public void onLost(Network network) {
-                if (network.equals(current)) { reset(); current = null; summary = "网络已断开，恢复连接后将自动检测直连线路"; }
+                if (network.equals(current)) { check.cancel();check.clearResult();reset(); current = null; summary = "网络已断开，恢复连接后将自动检测直连线路"; }
             }
         });
     }
@@ -141,15 +142,17 @@ public final class GoogleNetwork extends Application {
     boolean relayEnabled(){return preferences.getBoolean("allow-known-relay",false);}
     String builtInCandidates(){return bootstrap.description();}
     private boolean routeAddress(String ip){return (relayEnabled()&&KNOWN_RELAY.equals(ip))||(addressSpace!=null&&addressSpace.contains(ip));}
-    void relayEnabled(boolean enabled){if(enabled!=relayEnabled()){preferences.edit().putBoolean("allow-known-relay",enabled).apply();reset();}}
+    void relayEnabled(boolean enabled){if(enabled!=relayEnabled()){check.clearResult();preferences.edit().putBoolean("allow-known-relay",enabled).apply();reset();summary="连接方式已更新，下次浏览或传输时自动检测";}}
     private void prepareSpace()throws IOException {
-        summary="正在核对 Google 官方地址范围…";
+        if(addressSpace==null)summary="正在核对 Google 官方地址范围…";
         GoogleBootstrap.Scope scope=bootstrap.scope(catalog);
         addressSpace=scope.space;bootstrapOnly=scope.bundled;
         if(bootstrapOnly)summary="官方列表暂不可达，先验证内置公开报告候选；没有通过验证的地址不会使用";
     }
     void systemNetwork(boolean enabled) {
+        if(enabled==systemNetwork())return;
         preferences.edit().putBoolean("system-network",enabled).apply();
+        reset();check.clearResult();
         summary = enabled ? "系统网络" : "自动直连：浏览或下载时自动检测";
     }
     void reset() { routes.reset(); directClients.clear(); if(catalog!=null)catalog.retryRefresh(); }
@@ -283,7 +286,14 @@ public final class GoogleNetwork extends Application {
             if (selected[0] != null) { failed.add(selected[0].key()); routes.reject(selected[0]); }
         }, guard);
     }
+    ConnectionCheck.Snapshot connectionCheck(){return check.snapshot();}
+    void startCheck() {
+        if(systemNetwork()||DownloadService.snapshot.active)return;
+        check.start(()->{reset();checkRoutes();return summary;});
+    }
+    void cancelCheck(){check.cancel();}
     void checkRoutes() throws IOException {
+        if(Thread.currentThread().isInterrupted())throw new java.io.InterruptedIOException("检测已取消");
         prepareSpace();
         List<String> results = new ArrayList<>();
         boolean failed = false;
@@ -295,6 +305,7 @@ public final class GoogleNetwork extends Application {
             }
         }
         summary = String.join("\n",results);
+        if(Thread.currentThread().isInterrupted())throw new java.io.InterruptedIOException("检测已取消");
         if (failed) throw new IOException(summary);
     }
 }

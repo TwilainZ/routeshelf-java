@@ -16,16 +16,12 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.view.Gravity;
 import android.view.View;
-import android.view.ViewGroup;
-import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
-import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 import java.util.Locale;
@@ -33,27 +29,19 @@ import java.util.Locale;
 public final class MainActivity extends AppCompatActivity {
     static final String EXTRA_SETTINGS="show_network_settings", EXTRA_TRANSFER="show_transfer";
     private int INK,MUTED,BLUE,PALE,SURFACE,OUTLINE;
-    private LinearLayout networkPanel,manualPanel;
-    private Button settingsToggle,advancedToggle;
+    private LinearLayout manualPanel;
     private ScrollView page;
     private View transferSection;
     private EditText linkInput, ipInput;
-    private Spinner threads;
-    private TextView status, progressLabel, networkStatus;
-    private Spinner networkMode;
-    private Thread scanThread;
+    private TextView status, progressLabel;
     private ProgressBar progress;
-    private Button scan, start, stop, open;
+    private Button start, stop, open;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private DownloadService.Snapshot last;
     private final Runnable ticker = new Runnable() {
         @Override public void run() {
-            String summary=GoogleNetwork.get().summary();
-            if(!android.text.TextUtils.equals(networkStatus.getText(),summary))networkStatus.setText(summary);
-            networkMode.setEnabled(!DownloadService.snapshot.active && scanThread == null);
             showSnapshot();
-            scan.setEnabled(scanThread != null || (!DownloadService.snapshot.active && !GoogleNetwork.get().systemNetwork()));
-            start.setEnabled(!DownloadService.snapshot.active && scanThread == null);
+            start.setEnabled(!DownloadService.snapshot.active);
             handler.postDelayed(this, 500);
         }
     };
@@ -126,15 +114,11 @@ public final class MainActivity extends AppCompatActivity {
             view.setPadding(side+bars.left,dp(16)+bars.top,side+bars.right,dp(16)+bars.bottom);return insets;
         });root.requestApplyInsets();
 
-        root.addView(text(getString(R.string.app_name), 27, INK, true));
+        Button back=button("返回云盘",false);back.setOnClickListener(v->finish());root.addView(back);
+        root.addView(text("公开链接与传输", 24, INK, true));
         space(root, 7);
-        root.addView(text("公开链接下载 · 云盘浏览、上传与管理", 13, MUTED, false));
-        space(root, 22);
 
-        Button myDrive = button(getString(R.string.drive_title), true);
-        myDrive.setOnClickListener(v -> startActivity(new Intent(this, DriveActivity.class)));
-        root.addView(myDrive, new LinearLayout.LayoutParams(-1,-2));
-        space(root, 16);
+        space(root, 22);
 
         LinearLayout download = card(root);
         heading(download, "文件链接", "粘贴公开分享的 Google Drive 文件链接，不需要登录账号。");
@@ -160,90 +144,17 @@ public final class MainActivity extends AppCompatActivity {
         });
         download.addView(paste, new LinearLayout.LayoutParams(-1,-2));
 
-        settingsToggle=button(getString(R.string.connection_settings),false);
-        root.addView(settingsToggle,new LinearLayout.LayoutParams(-1,-2));
-        LinearLayout network = card(root);networkPanel=network;
-        network.setVisibility(savedInstanceState!=null&&savedInstanceState.getBoolean("network_expanded")?View.VISIBLE:View.GONE);
-        settingsToggle.setOnClickListener(v->{network.setVisibility(network.getVisibility()==View.VISIBLE?View.GONE:View.VISIBLE);});
-        heading(network, "数据连接", "浏览和传输共用连接设置。默认仅使用 Google 前端；也可明确允许已知第三方中转。证书始终由 Google 专用根验证。");
-        networkMode = new Spinner(this);
-        ArrayAdapter<String> modes = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item,
-            new String[]{"仅 Google 前端（自动检测）", "自动直连（允许已知中转）", "系统网络（使用设备网络设置）"});
-        modes.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        networkMode.setAdapter(modes);
-        networkMode.setMinimumHeight(dp(48));
-        networkMode.setContentDescription("数据连接方式");
-        networkMode.setSelection(GoogleNetwork.get().systemNetwork()?2:GoogleNetwork.get().relayEnabled()?1:0);
-        networkMode.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
-            @Override public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
-                if(position==1&&!GoogleNetwork.get().relayEnabled()) {
-                    new com.google.android.material.dialog.MaterialAlertDialogBuilder(MainActivity.this)
-                        .setTitle(R.string.relay_title).setMessage(R.string.relay_explanation)
-                        .setNegativeButton(android.R.string.cancel,(dialog,n)->networkMode.setSelection(GoogleNetwork.get().systemNetwork()?2:0))
-                        .setOnCancelListener(dialog->networkMode.setSelection(GoogleNetwork.get().systemNetwork()?2:0))
-                        .setPositiveButton(R.string.relay_allow,(dialog,n)->{GoogleNetwork.get().relayEnabled(true);GoogleNetwork.get().systemNetwork(false);}).show();
-                }else {GoogleNetwork.get().relayEnabled(position==1);GoogleNetwork.get().systemNetwork(position==2);}
-                if(scan!=null)scan.setEnabled(position!=2);
-            }
-            @Override public void onNothingSelected(android.widget.AdapterView<?> parent) { }
-        });
-        network.addView(networkMode);
-        networkStatus = text(GoogleNetwork.get().summary(), 14, INK, false);
-        networkStatus.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-        network.addView(networkStatus);
-        Button builtIn=button(getString(R.string.builtin_google_candidates),false);
-        builtIn.setOnClickListener(v->new com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
-            .setTitle(R.string.builtin_google_candidates).setMessage(GoogleNetwork.get().builtInCandidates())
-            .setPositiveButton(android.R.string.ok,null).show());
-        network.addView(builtIn,new LinearLayout.LayoutParams(-1,-2));
-        space(network, 10);
-        scan = button("重新检测直连", false);
-        network.addView(scan, new LinearLayout.LayoutParams(-1,-2));
-        scan.setEnabled(!GoogleNetwork.get().systemNetwork());
-        scan.setOnClickListener(v -> scanIps());
-        space(network, 8);
-        network.addView(text("登录及重新获取授权仍由 Google 服务连接系统网络。直连可用性取决于当前网络，VPN/TUN 可能接管连接。", 13, MUTED, false));
-        Button advanced = button("高级：指定公开下载 IP", false);advancedToggle=advanced;
-        network.addView(advanced, new LinearLayout.LayoutParams(-1,-2));
-        LinearLayout manual = vertical();manualPanel=manual;
-        manual.setVisibility(View.GONE);
-        TextView manualLabel = text("Google 前端 IPv4（可选）", 14, INK, false);
-        manual.addView(manualLabel);
-        ipInput = new EditText(this);
-        ipInput.setId(View.generateViewId());
-        ipInput.setSingleLine(true);
-        ipInput.setTextSize(14);
-        ipInput.setTextColor(INK);
-        ipInput.setInputType(android.text.InputType.TYPE_CLASS_PHONE);
-        ipInput.setHint("留空使用上方连接方式");
-        ipInput.setHintTextColor(MUTED);
-        ipInput.setBackground(rounded(PALE, OUTLINE));
-        ipInput.setPadding(dp(13), dp(14), dp(13), dp(14));
-        manualLabel.setLabelFor(ipInput.getId());
-        manual.addView(ipInput, new LinearLayout.LayoutParams(-1,-2));
-        manual.addView(text("仅覆盖本次公开下载；地址须属于 Google 官方前端范围，并校验真实域名证书。私人文件由自动直连或系统网络处理。",13,MUTED,false));
-        network.addView(manual);
-        advanced.setOnClickListener(v -> {
-            boolean visible = manual.getVisibility() != View.VISIBLE;
-            manual.setVisibility(visible ? View.VISIBLE : View.GONE);
-            if (!visible) ipInput.setText("");
-            advanced.setText(visible ? "收起高级设置" : "高级：指定公开下载 IP");
-        });
-        space(network, 13);
-        network.addView(text("并行连接数", 13, INK, true));
-        threads = new Spinner(this);
-        String[] items = {"1 条连接（稳妥）", "4 条连接（推荐）", "8 条连接（实验）"};
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, items);
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        threads.setAdapter(adapter);
-        int savedWorkers=getSharedPreferences("transfer-settings",MODE_PRIVATE).getInt("workers",4);
-        threads.setSelection(savedWorkers==1?0:savedWorkers==8?2:1);
-        threads.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
-            public void onNothingSelected(android.widget.AdapterView<?> parent){}
-            public void onItemSelected(android.widget.AdapterView<?> parent,View view,int position,long id){getSharedPreferences("transfer-settings",MODE_PRIVATE).edit().putInt("workers",position==0?1:position==1?4:8).apply();}
-        });
-        threads.setMinimumHeight(dp(48));threads.setContentDescription("并行连接数");
-        network.addView(threads);
+        Button settings = button(getString(R.string.settings_title),false);
+        settings.setOnClickListener(v -> startActivity(new Intent(this,SettingsActivity.class)));
+        root.addView(settings,new LinearLayout.LayoutParams(-1,-2));
+        // A one-transfer override belongs with the public-link task, not global routing.
+        Button advanced = button("指定本次公开下载 IP（高级）",false);download.addView(advanced);
+        manualPanel=vertical();manualPanel.setVisibility(View.GONE);download.addView(manualPanel);
+        ipInput=new EditText(this);ipInput.setSingleLine(true);ipInput.setHint("Google 公网 IPv4；留空自动连接");
+        ipInput.setContentDescription("本次公开下载 IP");ipInput.setInputType(android.text.InputType.TYPE_CLASS_PHONE);
+        manualPanel.addView(ipInput,new LinearLayout.LayoutParams(-1,-2));
+        manualPanel.addView(text("只影响本次公开下载，仍会核对 Google 地址范围与证书。",14,MUTED,false));
+        advanced.setOnClickListener(v->{boolean show=manualPanel.getVisibility()!=View.VISIBLE;manualPanel.setVisibility(show?View.VISIBLE:View.GONE);if(!show)ipInput.setText("");});
 
         LinearLayout actions = card(root);transferSection=actions;
         heading(actions, "文件传输", "查看当前上传或下载任务，完成后可打开下载文件。");
@@ -273,10 +184,10 @@ public final class MainActivity extends AppCompatActivity {
         space(root, 1);
         root.addView(text("已下载文件保存在 下载/GDirect Lite", 12, MUTED, false));
         // Put the task before optional diagnostics/settings in the reading and focus order.
-        root.removeView(actions);root.addView(actions,root.indexOfChild(settingsToggle));
+        root.removeView(actions);root.addView(actions,root.indexOfChild(settings));
         linkInput.setText(savedInstanceState==null?getPreferences(MODE_PRIVATE).getString("link",""):savedInstanceState.getString("link_draft",""));
         if(savedInstanceState!=null&&savedInstanceState.getBoolean("manual_expanded")) {
-            manual.setVisibility(View.VISIBLE);ipInput.setText(savedInstanceState.getString("manual_ip",""));advanced.setText("收起高级设置");
+            manualPanel.setVisibility(View.VISIBLE);ipInput.setText(savedInstanceState.getString("manual_ip",""));
         }
         // Do not carry an old scanner-selected IP into the automatic routing workflow.
         if(savedInstanceState==null)takeSharedIntent(getIntent());
@@ -291,13 +202,12 @@ public final class MainActivity extends AppCompatActivity {
     private void showRequestedSection(Intent intent) {
         if(intent==null)return;
         if(intent.getBooleanExtra(EXTRA_SETTINGS,false)) {
-            networkPanel.setVisibility(View.VISIBLE);page.post(()->page.smoothScrollTo(0,settingsToggle.getTop()));
+            startActivity(new Intent(this,SettingsActivity.class));intent.removeExtra(EXTRA_SETTINGS);
         }else if(intent.getBooleanExtra(EXTRA_TRANSFER,false))page.post(()->page.smoothScrollTo(0,transferSection.getTop()));
     }
     @Override protected void onSaveInstanceState(Bundle state) {
         if(linkInput==null){super.onSaveInstanceState(state);return;}
         state.putString("link_draft",linkInput.getText().toString());
-        state.putBoolean("network_expanded",networkPanel.getVisibility()==View.VISIBLE);
         state.putBoolean("manual_expanded",manualPanel.getVisibility()==View.VISIBLE);
         state.putString("manual_ip",ipInput.getText().toString());
         super.onSaveInstanceState(state);
@@ -312,21 +222,6 @@ public final class MainActivity extends AppCompatActivity {
             }
         }
     }
-    private void scanIps() {
-        if (scanThread != null) { scanThread.interrupt(); scan.setEnabled(false); return; }
-        scan.setText("取消检测");
-        GoogleNetwork.get().reset();
-        scanThread = new Thread(() -> {
-            try {
-                GoogleNetwork.get().checkRoutes();
-            } catch (java.io.IOException ignored) { /* Specific progress/failure is shown by the route manager. */ }
-            finally { runOnUiThread(() -> {
-                scanThread = null;
-                if (!isDestroyed()) { scan.setText("重新检测直连"); scan.setEnabled(!GoogleNetwork.get().systemNetwork()); }
-            }); }
-        }, "gdirect-scan");
-        scanThread.start();
-    }
     private void beginDownload() {
         if (DownloadService.snapshot.active) { Toast.makeText(this, "已有下载正在进行", Toast.LENGTH_SHORT).show(); return; }
         String link = linkInput.getText().toString().trim();
@@ -335,13 +230,13 @@ public final class MainActivity extends AppCompatActivity {
         try { DirectNet.normalizeSharedLink(link); }
         catch(Exception ex){linkInput.setError(ex.getMessage());linkInput.requestFocus();return;}
         try { DirectNet.parseIp(ip); }
-        catch(Exception ex){networkPanel.setVisibility(View.VISIBLE);manualPanel.setVisibility(View.VISIBLE);ipInput.setError(ex.getMessage());ipInput.requestFocus();return;}
+        catch(Exception ex){manualPanel.setVisibility(View.VISIBLE);ipInput.setError(ex.getMessage());ipInput.requestFocus();return;}
         ((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(linkInput.getWindowToken(),0);
         getPreferences(MODE_PRIVATE).edit().putString("link",link).putString("ip",ip).apply();
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1);
         }
-        int workers = threads.getSelectedItemPosition() == 0 ? 1 : threads.getSelectedItemPosition() == 1 ? 4 : 8;
+        int workers = getSharedPreferences("transfer-settings",MODE_PRIVATE).getInt("workers",4);
         Intent intent = new Intent(this, DownloadService.class);
         intent.setAction(DownloadService.ACTION_START);
         intent.putExtra(DownloadService.EXTRA_URL, link);
@@ -385,9 +280,8 @@ public final class MainActivity extends AppCompatActivity {
     }
     @Override protected void onDestroy() {
         handler.removeCallbacks(ticker);
-        if (scanThread != null) scanThread.interrupt();
         super.onDestroy();
     }
-    @Override protected void onStart() { super.onStart(); if(networkStatus!=null)handler.post(ticker); }
+    @Override protected void onStart() { super.onStart(); if(status!=null)handler.post(ticker); }
     @Override protected void onStop() { handler.removeCallbacks(ticker); super.onStop(); }
 }

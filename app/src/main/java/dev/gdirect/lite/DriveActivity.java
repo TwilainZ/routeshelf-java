@@ -52,7 +52,7 @@ public final class DriveActivity extends AppCompatActivity {
     private final Deque<String[]> parents = new ArrayDeque<>();
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final FileAdapter adapter = new FileAdapter();
-    private TextView message, location, transfer, explanation, networkStatus,accessStatus;
+    private TextView message, location, transfer, explanation;
     private LinearLayout queryRow;
     private com.google.android.material.bottomnavigation.BottomNavigationView navigation;
     private com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton create;
@@ -89,8 +89,6 @@ public final class DriveActivity extends AppCompatActivity {
                     }
                 }catch(DriveSession.AuthorizationRequired expired){clearBrowser();}
             }
-            String connectionSummary=GoogleNetwork.get().summary();
-            if(!android.text.TextUtils.equals(networkStatus.getText(),connectionSummary))networkStatus.setText(connectionSummary);
             if (wasConnected && !DriveSession.INSTANCE.connected()) clearBrowser();
             if (wasRevoking && !GoogleAuthorization.revoking.get()) {
                 message.setText(GoogleAuthorization.lastRevokeSucceeded ? R.string.drive_revoked : R.string.drive_revoke_failed);
@@ -186,10 +184,6 @@ public final class DriveActivity extends AppCompatActivity {
         explanation = label(getString(R.string.drive_consent), 16);
         explanation.setPadding(0,dp(16),0,dp(12));
         root.addView(explanation);
-        networkStatus = label(GoogleNetwork.get().summary(),14);
-        networkStatus.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-        networkStatus.setVisibility(View.GONE);root.addView(networkStatus);
-        accessStatus=label("",14);root.addView(accessStatus);
         connect = button(R.string.drive_connect);
         connect.setOnClickListener(v -> authorize());
         root.addView(connect, new LinearLayout.LayoutParams(-1,-2));
@@ -297,6 +291,27 @@ public final class DriveActivity extends AppCompatActivity {
         updateControls();
         if (DriveSession.INSTANCE.connected()) {if(editing)message.setText(R.string.drive_editing);else load(false);}
         else message.setText(GoogleAuthorization.revoking.get() ? R.string.drive_revoking : R.string.drive_not_connected);
+        handleSettingsAction(getIntent());
+    }
+
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);setIntent(intent);handleSettingsAction(intent);
+    }
+    private void handleSettingsAction(Intent intent) {
+        String action=intent.getStringExtra(SettingsActivity.EXTRA_ACCOUNT_ACTION);
+        intent.removeExtra(SettingsActivity.EXTRA_ACCOUNT_ACTION);
+        if(action==null)return;
+        handler.post(()->{
+            if(isFinishing()||isDestroyed())return;
+            switch(action) {
+                case "connect":authorize();break;
+                case "manage":if(DriveSession.INSTANCE.connected())requestManagement();break;
+                case "disconnect":if(!authorizing)disconnect();break;
+                case "revoke":if(!authorizing)new MaterialAlertDialogBuilder(this).setTitle(R.string.drive_revoke)
+                    .setMessage(R.string.drive_revoke_explanation).setNegativeButton(android.R.string.cancel,null)
+                    .setPositiveButton(R.string.drive_revoke,(d,w)->revoke()).show();break;
+            }
+        });
     }
 
     private void authorize() {
@@ -425,7 +440,6 @@ public final class DriveActivity extends AppCompatActivity {
         connect.setVisibility(wasConnected ? View.GONE : View.VISIBLE);
         connect.setEnabled(!authorizing && !wasRevoking);
         explanation.setVisibility(wasConnected ? View.GONE : View.VISIBLE);
-        accessStatus.setVisibility(wasConnected?View.VISIBLE:View.GONE);accessStatus.setText(DriveSession.INSTANCE.writable()?R.string.drive_access_manage:R.string.drive_access_readonly);
         queryRow.setVisibility(wasConnected ? View.VISIBLE : View.GONE);
         if(navigation!=null) {
             changingNavigation=true;navigation.setSelectedItemId(currentView==DriveApi.View.RECENT?101:currentView==DriveApi.View.STARRED?102:currentView==DriveApi.View.SHARED?103:104);changingNavigation=false;
@@ -805,47 +819,22 @@ public final class DriveActivity extends AppCompatActivity {
     }
 
     @Override public boolean onCreateOptionsMenu(Menu menu) {
-        menu.add(0,7,0,R.string.drive_upload).setIcon(R.drawable.ic_upload)
-            .setIconTintList(android.content.res.ColorStateList.valueOf(com.google.android.material.color.MaterialColors.getColor(this,com.google.android.material.R.attr.colorOnSurface,android.graphics.Color.BLACK)))
-            .setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER);
-        menu.add(0,13,0,R.string.drive_public_download);
-        menu.add(0,6,1,R.string.drive_refresh);
-        menu.add(0,4,2,R.string.drive_new_folder);
-        menu.add(0,10,3,R.string.drive_sort);
-        menu.add(0,9,4,R.string.drive_transfer_details);
-        menu.add(0,11,5,R.string.connection_settings);
-        menu.add(0,5,6,R.string.drive_manage_access);
-        menu.add(0,12,7,R.string.drive_disconnect);
-        menu.add(0,8,8,R.string.drive_privacy);
-        menu.add(0,2,9,R.string.licenses);
-        menu.add(0,3,10,R.string.diagnostics_title);
-        menu.add(0,1,11,R.string.drive_revoke);
+        menu.add(0,6,0,R.string.drive_refresh);
+        menu.add(0,10,1,R.string.drive_sort);
+        menu.add(0,13,2,R.string.drive_public_download);
+        menu.add(0,9,3,R.string.drive_transfer_details);
+        menu.add(0,11,4,R.string.settings_title);
         return true;
     }
     @Override public boolean onPrepareOptionsMenu(Menu menu) {
-        menu.findItem(1).setEnabled(!authorizing && !GoogleAuthorization.revoking.get());
-        for(int id:new int[]{4,5,6})menu.findItem(id).setEnabled(DriveSession.INSTANCE.connected()&&!loading&&!editing&&!authorizing);
-        menu.findItem(4).setEnabled(DriveSession.INSTANCE.connected()&&!loading&&!editing&&currentView==DriveApi.View.FOLDER);
-        menu.findItem(7).setEnabled(DriveSession.INSTANCE.connected()&&!loading&&!editing&&currentView==DriveApi.View.FOLDER&&!DownloadService.snapshot.active);
+        menu.findItem(6).setEnabled(DriveSession.INSTANCE.connected()&&!loading&&!editing&&!authorizing);
         menu.findItem(10).setEnabled(DriveSession.INSTANCE.connected()&&!loading&&!editing&&currentView!=DriveApi.View.DRIVES);
-        menu.findItem(12).setVisible(DriveSession.INSTANCE.connected()).setEnabled(!authorizing);
         return super.onPrepareOptionsMenu(menu);
     }
     @Override public boolean onOptionsItemSelected(MenuItem item) {
         if(item.getItemId()==13){startActivity(new Intent(this,MainActivity.class));return true;}
         if (item.getItemId() == android.R.id.home) { if(!activeSearch.isEmpty())clearSearch();else goUp(); return true; }
-        if (item.getItemId() == 1) {
-            new MaterialAlertDialogBuilder(this).setTitle(R.string.drive_revoke).setMessage(R.string.drive_revoke_explanation)
-                .setNegativeButton(android.R.string.cancel,null).setPositiveButton(R.string.drive_revoke,(d,w) -> revoke()).show();
-            return true;
-        }
-        if (item.getItemId() == 2) { showLicenses(); return true; }
-        if (item.getItemId() == 3) { showDiagnostics(); return true; }
-        if(item.getItemId()==4){editName(null);return true;}
-        if(item.getItemId()==5){requestManagement();return true;}
         if(item.getItemId()==6){load(false);return true;}
-        if(item.getItemId()==7){chooseUpload();return true;}
-        if(item.getItemId()==8){showPrivacy();return true;}
         if(item.getItemId()==9){startActivity(new Intent(this,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT).putExtra(MainActivity.EXTRA_TRANSFER,true));return true;}
         if(item.getItemId()==10){
             new MaterialAlertDialogBuilder(this).setTitle(R.string.drive_sort)
@@ -854,8 +843,12 @@ public final class DriveActivity extends AppCompatActivity {
                     if(choice!=currentSort){currentSort=choice;load(false);}
                 }).setNegativeButton(android.R.string.cancel,null).show();return true;
         }
-        if(item.getItemId()==11){startActivity(new Intent(this,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT).putExtra(MainActivity.EXTRA_SETTINGS,true));return true;}
-        if(item.getItemId()==12){disconnect();return true;}
+        if(item.getItemId()==11){
+            Intent settings=new Intent(this,SettingsActivity.class).putExtra("authorization_phase",authorizationPhase);
+            if(lastActivityResult!=null)settings.putExtra("last_activity_result",lastActivityResult);
+            if(lastSdkStatus!=null)settings.putExtra("last_sdk_status",lastSdkStatus);
+            startActivity(settings);return true;
+        }
         return super.onOptionsItemSelected(item);
     }
     private void revoke() {
@@ -875,70 +868,6 @@ public final class DriveActivity extends AppCompatActivity {
                     updateControls();
                 }
             });
-    }
-    private void showDiagnostics() {
-        String details = AppDiagnostics.describe(this,authorizationPhase,lastActivityResult,lastSdkStatus);
-        TextView text = label(details,14);
-        text.setTextIsSelectable(true); text.setPadding(dp(20),dp(16),dp(20),dp(16));
-        android.widget.ScrollView scroll = new android.widget.ScrollView(this); scroll.addView(text);
-        new MaterialAlertDialogBuilder(this).setTitle(R.string.diagnostics_title).setView(scroll)
-            .setNegativeButton(android.R.string.cancel,null)
-            .setPositiveButton(R.string.diagnostics_copy,(dialog,which) -> {
-                android.content.ClipboardManager clipboard = (android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
-                clipboard.setPrimaryClip(android.content.ClipData.newPlainText(getString(R.string.diagnostics_title),details));
-            }).show();
-    }
-    private void showLicenses() {
-        new Thread(() -> {
-            try (java.io.InputStream in = getAssets().open("third-party-notices.txt");
-                 java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream()) {
-                byte[] buffer = new byte[8192]; int n;
-                while ((n = in.read(buffer)) != -1) bytes.write(buffer,0,n);
-                String content = bytes.toString("UTF-8");
-                // Google SDK notices are large; never lay out megabytes of TextView on the UI thread.
-                List<String> pages = new ArrayList<>();
-                for (int offset = 0; offset < content.length();) {
-                    int end = Math.min(content.length(),offset + 8192);
-                    if (end < content.length() && Character.isHighSurrogate(content.charAt(end-1))) end--;
-                    pages.add(content.substring(offset,end)); offset = end;
-                }
-                handler.post(() -> {
-                    if (isDestroyed() || isFinishing()) return;
-                    TextView text = label("",14); text.setPadding(dp(20),dp(16),dp(20),dp(16)); text.setTextIsSelectable(true);
-                    android.widget.ScrollView scroll = new android.widget.ScrollView(this); scroll.addView(text);
-                    androidx.appcompat.app.AlertDialog dialog = new MaterialAlertDialogBuilder(this).setView(scroll)
-                        .setPositiveButton(R.string.licenses_next,null).setNegativeButton(R.string.licenses_previous,null)
-                        .setNeutralButton(android.R.string.ok,null).create();
-                    int[] page = {0};
-                    Runnable display = () -> {
-                        text.setText(pages.get(page[0])); scroll.scrollTo(0,0);
-                        dialog.setTitle(getString(R.string.licenses_page,page[0]+1,pages.size()));
-                        dialog.getButton(-1).setEnabled(page[0]+1 < pages.size());
-                        dialog.getButton(-2).setEnabled(page[0] > 0);
-                    };
-                    dialog.setOnShowListener(ignored -> {
-                        dialog.getButton(-1).setOnClickListener(v -> { page[0]++; display.run(); });
-                        dialog.getButton(-2).setOnClickListener(v -> { page[0]--; display.run(); });
-                        display.run();
-                    });
-                    dialog.show();
-                });
-            } catch (IOException error) { handler.post(() -> { if (!isDestroyed()) message.setText(R.string.licenses_unavailable); }); }
-        },"gdirect-notices").start();
-    }
-    private void showPrivacy() {
-        new Thread(()->{
-            try(java.io.InputStream in=getAssets().open("privacy-policy.txt")) {
-                java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();byte[] buffer=new byte[4096];int n;
-                while((n=in.read(buffer))!=-1){if(bytes.size()+n>65536)throw new IOException("Privacy text too large");bytes.write(buffer,0,n);}
-                String content=bytes.toString("UTF-8");
-                handler.post(()->{if(!isDestroyed()){
-                    TextView view=label(content,16);view.setTextIsSelectable(true);view.setPadding(dp(20),dp(12),dp(20),dp(12));
-                    android.widget.ScrollView scroll=new android.widget.ScrollView(this);scroll.addView(view);
-                    new MaterialAlertDialogBuilder(this).setTitle(R.string.drive_privacy).setView(scroll).setPositiveButton(android.R.string.ok,null).show();
-                }});
-            }catch(IOException e){handler.post(()->{if(!isDestroyed())message.setText(R.string.drive_privacy_unavailable);});}
-        },"privacy-text").start();
     }
     @Override protected void onSaveInstanceState(Bundle state) {
         state.putLong("mutation_revision",observedMutation);

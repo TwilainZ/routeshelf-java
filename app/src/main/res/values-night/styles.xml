@@ -1,5 +1,6 @@
 <resources>
     <style name="DriveTheme" parent="Theme.Material3.DayNight">
+        <item name="settingsRowStyle">@style/Widget.Material3.Button.TextButton</item>
         <item name="android:fontFamily">sans-serif</item>
         <item name="colorPrimary">#A8C7FA</item>
         <item name="colorOnPrimary">#062E6F</item>
