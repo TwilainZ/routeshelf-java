@@ -49,8 +49,8 @@ The original ZIP now lives in docs/history/prototype/ with identical bytes. Icon
 
 ## Workflow
 
-Read root README, docs/README.md, docs/GOOGLE_SETUP.md and current workflow before work. Work on a development branch and keep a reviewable PR; never force-push, merge or push directly to main without explicit instruction.
+Read root README, docs/README.md, docs/GOOGLE_SETUP.md and current workflow before work. On 2026-10-29 the owner explicitly requested one canonical branch containing the latest verified version: main. Keep completed, verified work on main and preserve Git history; do not leave the latest version only on a development branch. Temporary branches or PRs may be used when useful, but integrate completed work and remove merged temporary branches. Never force-push or rewrite published history without explicit instruction.
 
 Run bash tools/check.sh for source verification. New network logic needs meaningful failure/TLS/protocol tests; run appropriate checks without repeated unrelated test cycles. New dependencies require license review and tools/refresh-notices.py. Build outputs stay ignored. Keep current docs factual and put historical evidence in docs/history/ instead of appending contradictory current instructions.
 
-Complete a coherent functional phase before handing over one traceable APK. CI must validate actual APK identity before artifacts; random debug builds are internal checks, not compatible upgrades. Record what changed, actual checks and material remaining device limits in the PR. All earlier evidence is preserved in docs/history/AGENTS_THROUGH_0_6.md, not binding as current state.
+Complete a coherent functional phase before handing over one traceable APK. CI must validate actual APK identity before artifacts; random debug builds are internal checks, not compatible upgrades. Record what changed, actual checks and material remaining device limits in the handoff and any PR used. All earlier evidence is preserved in docs/history/AGENTS_THROUGH_0_6.md, not binding as current state.

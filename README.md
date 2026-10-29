@@ -8,6 +8,8 @@
 
 [文档导航](docs/README.md) · [开发构建](docs/DEVELOPMENT.md) · [Google 配置](docs/GOOGLE_SETUP.md) · [验收清单](docs/ACCEPTANCE.md) · [更新记录](CHANGELOG.md)
 
+`main` 保存最新通过源码验证的版本；旧版本可在 Git 提交历史中查看，无需切换到开发分支获取最新代码。
+
 ## 可以做什么
 
 - **文件浏览**：文件夹、搜索、分页和排序；最近修改、星标、与我共享、回收站和共享云端硬盘；快捷方式与资源密钥。

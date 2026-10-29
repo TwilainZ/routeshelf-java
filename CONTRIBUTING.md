@@ -1,6 +1,6 @@
 # 开发与贡献
 
-先读 [AGENTS.md](AGENTS.md)、[开发环境](docs/DEVELOPMENT.md) 和 [设计约束](DESIGN.md)。从开发分支提交 Pull Request，保持 main 的可构建基线；不要强推或直接合并。
+先读 [AGENTS.md](AGENTS.md)、[开发环境](docs/DEVELOPMENT.md) 和 [设计约束](DESIGN.md)。按维护者要求，`main` 统一保存最新通过验证的版本，旧版本由 Git 提交历史保留，不另建旧版本分支或源码副本。外部贡献仍可提交 Pull Request；临时开发分支完成验证并合入后清理。不要强推或改写已发布历史。
 
 应用是独立实现。可参考公开功能与协议，但不要导入、翻译或逐段改写其他项目的 GPL 源码、aria2 补丁、种子、测试和界面资产。新增依赖先检查许可，更新第三方声明。自有代码 Apache-2.0，根证书等独立文件保留原条款。
 
