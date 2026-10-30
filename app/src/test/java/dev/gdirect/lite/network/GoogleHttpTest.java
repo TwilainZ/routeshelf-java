@@ -31,6 +31,32 @@ import org.junit.Test;
 
 /** Real TLS over loopback with ephemeral fixture certificates; production trust is never disabled. */
 public final class GoogleHttpTest {
+    @Test public void cachedRealSniFailureRecoversToFrontendIdentityAndDownloadsOverRealTls()throws Exception {
+        try(Fixture f=new Fixture("g.cn")) {
+            f.server.enqueue(new MockResponse().setResponseCode(401).setBody("{\"error\":{\"code\":401}}"));
+            f.server.enqueue(new MockResponse().setBody("downloaded fixture bytes"));
+            OkHttpClient trusted=new OkHttpClient.Builder().sslSocketFactory(f.clientTrust.sslSocketFactory(),f.clientTrust.trustManager()).build();
+            DirectRoutesTest.Memory memory=new DirectRoutesTest.Memory();
+            memory.save(HOST,new DirectRoutes.Route(HOST,"127.0.0.1",DirectRoutes.TlsMode.NORMAL,System.currentTimeMillis()));
+            URL url=f.url();DirectRoutes.Route[] selected={null};java.util.Set<String> failed=new java.util.HashSet<>();
+            DirectRoutes routes=new DirectRoutes(host->{throw new AssertionError("Identity recovery restarted DNS");},route->{
+                try(okhttp3.Response r=GoogleHttp.direct(trusted,route).newCall(new Request.Builder().url(url).build()).execute()) {
+                    if(r.code()!=401)throw new IOException("Expected credential-free API response");
+                }
+            },memory,message->{},12000,ip->ip.equals("127.0.0.1"));
+            HttpsURLConnection c=GoogleHttp.open(url,()->{
+                selected[0]=routes.select(HOST,failed);return GoogleHttp.direct(trusted,selected[0]);
+            },()->{failed.add(selected[0].key());routes.reject(selected[0]);});
+            c.setRequestProperty("Authorization","Bearer loopback-only-token");
+            try {
+                assertEquals("downloaded fixture bytes",new String(c.getInputStream().readAllBytes(),java.nio.charset.StandardCharsets.UTF_8));
+                assertEquals(DirectRoutes.TlsMode.GOOGLE_FRONT,selected[0].tls);
+                RecordedRequest probe=f.server.takeRequest(2,TimeUnit.SECONDS),download=f.server.takeRequest(2,TimeUnit.SECONDS);
+                assertNotNull(probe);assertNotNull(download);assertNull(probe.getHeader("Authorization"));
+                assertEquals("Bearer loopback-only-token",download.getHeader("Authorization"));assertEquals(2,f.server.getRequestCount());
+            }finally{c.disconnect();}
+        }
+    }
     @Test public void successiveDirectRequestsReuseTlsAndResetDiscardsTheConnection() throws Exception {
         try(Fixture f=new Fixture(HOST)) {
             OkHttpClient trusted=new OkHttpClient.Builder().sslSocketFactory(f.clientTrust.sslSocketFactory(),f.clientTrust.trustManager()).build();

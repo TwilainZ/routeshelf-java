@@ -1,4 +1,4 @@
-# 0.6.0 UI 改进
+# UI 实现与检查
 
 主界面已按维护者指定改为接近 Google Drive 的 Material 文件浏览：默认进入云盘；顶部工具栏与固定搜索；底部首页（最近修改）、星标、共享、文件；右下角新建/上传。文件范围标题的下拉入口提供其他范围、回收站和共享云盘。文件行增加独立类型图标、大小和修改时间，保留两行文件名与更多菜单。菜单保留刷新、排序、公开链接下载、传输和设置。独立设置页统一账户权限、连接、下载偏好和关于；文件列表不重复显示长期权限和诊断文字。
 
@@ -9,3 +9,8 @@
 早期静态审查保存在 [0.4.0 历史记录](history/UI_0_4.md)。
 
 0.7.0 的设置页使用四组 Material 文字列表行；断开状态只显示连接入口，不堆积不可用的账户按钮。模式选择与下载并行数使用单选对话框，检测状态就地显示，退出/旋转后通过应用持有的同一任务恢复观察。隐私和许可在设置内查看，授权诊断保留原浏览页上下文。仍需设备视觉验收。
+
+
+0.7.3 将设置页的手写文字按钮替换为 AndroidX PreferenceFragmentCompat、PreferenceCategory、Preference 和 ListPreference，模式/并行数使用 MaterialAlertDialogBuilder 单选框。连接、账户、下载、关于四组有标题和独立摘要；模式状态明确显示，检测中切换先取消后应用，传输期间说明限制。返回云盘后按新模式刷新目录。移除旧 settingsRowStyle；日夜模式继续使用 Material 3 语义颜色。
+
+参考 Google 官方 Material Android 文档 [Dialogs](https://github.com/material-components/material-components-android/blob/master/docs/components/Dialog.md)、[Radio buttons](https://github.com/material-components/material-components-android/blob/master/docs/components/RadioButton.md)，以及 [AndroidX PreferenceFragmentCompat](https://github.com/androidx/androidx/blob/androidx-main/preference/preference/src/main/java/androidx/preference/PreferenceFragmentCompat.java)。组件编译与 Lint 已验证；本环境未执行手机视觉验收。

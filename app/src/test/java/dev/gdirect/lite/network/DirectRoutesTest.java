@@ -13,6 +13,67 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.Test;
 
 public final class DirectRoutesTest {
+    @Test public void expandedSearchCanReachAWorkingGoogleCandidateBeyondTheFirst48()throws Exception {
+        DirectRoutes.Candidates source=new DirectRoutes.Candidates(){
+            public java.util.List<String> get(String host){return Collections.singletonList("142.250.2.1");}
+            public java.util.List<String> expand(String host,java.util.List<String> observed){
+                java.util.List<String> result=new java.util.ArrayList<>();
+                for(int i=2;i<=90;i++)result.add("142.250.2."+i);return result;
+            }
+        };
+        DirectRoutes routes=new DirectRoutes(source,route->{
+            if(!route.ip.equals("142.250.2.90")||route.tls!=DirectRoutes.TlsMode.GOOGLE_FRONT)throw new IOException("unavailable fixture");
+        },new Memory(),message->{},4000);
+        assertEquals("142.250.2.90",routes.select(HOST,Collections.emptySet()).ip);
+    }
+    @Test public void failedCachedIdentityRecoversOnTheSameGoogleIpBeforeDns()throws Exception {
+        Memory memory=new Memory();DirectRoutes.Route previous=new DirectRoutes.Route(HOST,"192.179.50.100",DirectRoutes.TlsMode.NORMAL,System.currentTimeMillis());memory.save(HOST,previous);
+        DirectRoutes routes=new DirectRoutes(host->{throw new AssertionError("Cached IP identity recovery must precede catalog/DNS");},route->{
+            if(route.tls!=DirectRoutes.TlsMode.GOOGLE_FRONT)throw new IOException("real SNI blocked");
+        },memory,message->{},4000);
+        assertSame(previous,routes.select(HOST,Collections.emptySet()));routes.reject(previous);
+        DirectRoutes.Route recovered=routes.select(HOST,Collections.singleton(previous.key()));
+        assertEquals(previous.ip,recovered.ip);assertEquals(DirectRoutes.TlsMode.GOOGLE_FRONT,recovered.tls);
+    }
+    @Test public void expandedSearchDoesNotProbeAlreadyFailedFastAddressesAgain()throws Exception {
+        AtomicInteger fastProbes=new AtomicInteger();
+        DirectRoutes.Candidates source=new DirectRoutes.Candidates(){
+            public java.util.List<String> get(String host){return Collections.singletonList("142.250.2.1");}
+            public java.util.List<String> expand(String host,java.util.List<String> observed){return Arrays.asList("142.250.2.1","142.250.2.2");}
+        };
+        DirectRoutes routes=new DirectRoutes(source,route->{
+            if(route.ip.endsWith(".1")){fastProbes.incrementAndGet();throw new IOException("blocked fixture");}
+        },new Memory(),message->{},4000);
+        assertEquals("142.250.2.2",routes.select(HOST,Collections.emptySet()).ip);assertEquals(3,fastProbes.get());
+    }
+    @Test public void failedTcpCandidatesDoNotOccupyTlsWorkersOrHideLaterFrontends()throws Exception {
+        java.util.List<String> addresses=new java.util.ArrayList<>();for(int i=1;i<=70;i++)addresses.add("142.250.2."+i);
+        AtomicInteger tls=new AtomicInteger(),tcp=new AtomicInteger();
+        DirectRoutes routes=new DirectRoutes(host->addresses,new DirectRoutes.Probe(){
+            public void connect(String ip)throws IOException {tcp.incrementAndGet();if(!ip.endsWith(".40"))throw new IOException("TCP blocked");}
+            public void check(DirectRoutes.Route route)throws IOException {tls.incrementAndGet();assertTrue(route.ip.endsWith(".40"));if(route.tls!=DirectRoutes.TlsMode.GOOGLE_FRONT)throw new IOException("SNI blocked");}
+        },new Memory(),message->{},2000);
+        assertEquals("142.250.2.40",routes.select(HOST,Collections.emptySet()).ip);assertTrue(tcp.get()>=40);assertTrue(tls.get()>0);assertTrue(tls.get()<=3);
+    }
+    @Test public void unrelatedTcpRespondersCannotStopExpandedServiceDiscoveryAt32()throws Exception {
+        DirectRoutes.Candidates source=new DirectRoutes.Candidates(){
+            public java.util.List<String> get(String host){return Collections.emptyList();}
+            public java.util.List<String> expand(String host,java.util.List<String> observed){
+                java.util.List<String> ips=new java.util.ArrayList<>();for(int i=1;i<=100;i++)ips.add("142.250.2."+i);return ips;
+            }
+        };
+        DirectRoutes routes=new DirectRoutes(source,new DirectRoutes.Probe(){
+            public void connect(String ip) { }
+            public void check(DirectRoutes.Route route)throws IOException {if(!route.ip.endsWith(".99")||route.tls!=DirectRoutes.TlsMode.GOOGLE_FRONT)throw new IOException("Not a Drive frontend");}
+        },new Memory(),message->{},4000);
+        assertEquals("142.250.2.99",routes.select(HOST,Collections.emptySet()).ip);
+    }
+    @Test public void resetDiscardsFailedIdentityRecoveryAndCannotBypassNewPermission()throws Exception {
+        String ip="192.179.50.100";Memory memory=new Memory();
+        DirectRoutes routes=new DirectRoutes(host->Collections.singletonList("142.250.2.2"),route->{assertNotEquals(ip,route.ip);},memory,message->{},2000);
+        routes.reject(new DirectRoutes.Route(HOST,ip,DirectRoutes.TlsMode.NORMAL,System.currentTimeMillis()));routes.reset();
+        assertEquals("142.250.2.2",routes.select(HOST,Collections.emptySet()).ip);
+    }
     @Test public void expandsOnlyAfterFastCandidatesFailAndKeepsRelayOptInExplicit()throws Exception {
         AtomicInteger expanded=new AtomicInteger();
         DirectRoutes.Candidates source=new DirectRoutes.Candidates(){

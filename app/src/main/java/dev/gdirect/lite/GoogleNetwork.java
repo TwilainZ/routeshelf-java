@@ -13,6 +13,7 @@ import dev.gdirect.lite.network.GoogleFrontendScan;
 import dev.gdirect.lite.network.GoogleHttp;
 import dev.gdirect.lite.network.GoogleRangeCatalog;
 import dev.gdirect.lite.network.GoogleTrust;
+import dev.gdirect.lite.network.NetworkPathTracker;
 
 import android.app.Application;
 import android.content.SharedPreferences;
@@ -47,6 +48,8 @@ public final class GoogleNetwork extends Application {
     private DirectRoutes routes;
     private final Object policyLock=new Object();
     private long networkEpoch;
+    private ConnectivityManager connectivity;
+    private final NetworkPathTracker networkPaths=new NetworkPathTracker();
     private final ConnectionCheck check=new ConnectionCheck();
     private GoogleRangeCatalog catalog;
     private GoogleBootstrap bootstrap;
@@ -102,7 +105,10 @@ public final class GoogleNetwork extends Application {
             public List<String> preferred(String host){return relayEnabled()?Collections.singletonList(KNOWN_RELAY):Collections.emptyList();}
             public List<String> get(String host)throws IOException{prepareSpace();return candidates(host);}
             public List<String> expand(String host,List<String> observed)throws IOException{return expandedCandidates(observed);}
-        }, this::probe, new DirectRoutes.Store() {
+        }, new DirectRoutes.Probe(){
+            public void connect(String ip)throws IOException{GoogleFrontendScan.tcp(ip);}
+            public void check(DirectRoutes.Route route)throws IOException{probe(route);}
+        }, new DirectRoutes.Store() {
             @Override public DirectRoutes.Route load(String host) {
                 String[] fields = preferences.getString("route:" + host, "").split("\\|", -1);
                 try {
@@ -165,32 +171,41 @@ public final class GoogleNetwork extends Application {
         });
         logMode();
         DirectNet.connections = this::open;
-        ConnectivityManager connectivity = getSystemService(ConnectivityManager.class);
+        connectivity = getSystemService(ConnectivityManager.class);
+        refreshNetworkPath();
         connectivity.registerDefaultNetworkCallback(new ConnectivityManager.NetworkCallback() {
-            private Network current;
-            @Override public void onAvailable(Network network) {
-                if (current != null && !network.equals(current)) {DiagnosticLog.get().event(DiagnosticLog.Event.NETWORK_CHANGED);check.cancel();check.clearResult();reset();summary="网络已切换，下次浏览或传输时自动检测";}
-                current = network;
-            }
-            @Override public void onLost(Network network) {
-                if (network.equals(current)) {DiagnosticLog.get().event(DiagnosticLog.Event.NETWORK_LOST); check.cancel();check.clearResult();reset(); current = null; summary = "网络已断开，恢复连接后将自动检测直连线路"; }
-            }
+            @Override public void onAvailable(Network network){refreshNetworkPath();}
+            @Override public void onLost(Network network){refreshNetworkPath();}
+            @Override public void onCapabilitiesChanged(Network network,android.net.NetworkCapabilities capabilities){refreshNetworkPath();}
         });
+    }
+    private void refreshNetworkPath(){
+        if(connectivity==null)return;
+        Network active=connectivity.getActiveNetwork();
+        android.net.NetworkCapabilities capabilities=active==null?null:connectivity.getNetworkCapabilities(active);
+        synchronized(policyLock){
+            if(!networkPaths.update(active==null?0:active.getNetworkHandle(),capabilities!=null&&capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN)))return;
+            DiagnosticLog.get().event(active==null?DiagnosticLog.Event.NETWORK_LOST:DiagnosticLog.Event.NETWORK_CHANGED);
+            check.cancel();check.clearResult();reset();
+            summary=active==null?"网络已断开，恢复后将重新检测":"网络路径已改变，下次请求将重新验证线路";
+        }
     }
     public static GoogleNetwork get() { return instance; }
     public String summary() { return systemNetwork() ? "系统网络：遵循设备的 DNS 和代理设置" : summary; }
     boolean systemNetwork() { return preferences.getBoolean("system-network", false); }
     boolean relayEnabled(){return preferences.getBoolean("allow-known-relay",false);}
+    int connectionMode(){return systemNetwork()?2:relayEnabled()?1:0;}
+    void connectionMode(int mode){
+        if(mode<0||mode>2)throw new IllegalArgumentException("Invalid connection mode");
+        synchronized(policyLock){
+            if(mode==connectionMode())return;
+            preferences.edit().putBoolean("system-network",mode==2).putBoolean("allow-known-relay",mode==1).apply();
+            logMode();reset();check.clearResult();summary="连接方式已更新，下次浏览或传输时自动检测";
+        }
+    }
     String builtInCandidates(){return bootstrap.description();}
     private void logMode(){DiagnosticLog.get().event(systemNetwork()?DiagnosticLog.Event.MODE_SYSTEM:relayEnabled()?DiagnosticLog.Event.MODE_RELAY_ALLOWED:DiagnosticLog.Event.MODE_GOOGLE_ONLY);}
     private boolean routeAddress(String ip){return (relayEnabled()&&KNOWN_RELAY.equals(ip))||(addressSpace!=null&&addressSpace.contains(ip));}
-    void relayEnabled(boolean enabled) {
-        synchronized(policyLock) {
-            if(enabled==relayEnabled())return;
-            preferences.edit().putBoolean("allow-known-relay",enabled).apply();logMode();reset();check.clearResult();
-            summary="连接方式已更新，下次浏览或传输时自动检测";
-        }
-    }
     private void prepareSpace()throws IOException {
         long operation=DiagnosticLog.get().operation(),start=System.nanoTime();
         DiagnosticLog.get().record(DiagnosticLog.Event.RANGE_BEGIN,operation,"www.gstatic.com",null,null,0,0,null);
@@ -199,13 +214,6 @@ public final class GoogleNetwork extends Application {
         addressSpace=scope.space;bootstrapOnly=scope.bundled;
         DiagnosticLog.get().record(bootstrapOnly?DiagnosticLog.Event.RANGE_BOOTSTRAP:DiagnosticLog.Event.RANGE_READY,operation,"www.gstatic.com",null,null,DiagnosticLog.elapsed(start),0,null);
         if(bootstrapOnly)summary="官方列表暂不可达，先验证内置公开报告候选；没有通过验证的地址不会使用";
-    }
-    void systemNetwork(boolean enabled) {
-        synchronized(policyLock) {
-            if(enabled==systemNetwork())return;
-            preferences.edit().putBoolean("system-network",enabled).apply();logMode();reset();check.clearResult();
-            summary=enabled?"系统网络":"自动直连：浏览或下载时自动检测";
-        }
     }
     void reset() {
         synchronized(policyLock) {
@@ -296,10 +304,10 @@ public final class GoogleNetwork extends Application {
         GoogleAddressSpace space=addressSpace;if(space==null)return Collections.emptyList();
         summary="正在扩大 Google 前端检测范围，可随时取消…";
         List<String> plan=space.discoveryCandidates(observed,512,new java.security.SecureRandom());
-        long operation=DiagnosticLog.get().operation(),start=System.nanoTime();
-        DiagnosticLog.get().record(DiagnosticLog.Event.SCAN_BEGIN,operation,null,null,null,0,0,null);
-        List<String> found=GoogleFrontendScan.reachable(plan,space,GoogleFrontendScan::tcp);
-        DiagnosticLog.get().record(DiagnosticLog.Event.SCAN_READY,operation,null,null,null,DiagnosticLog.elapsed(start),found.size(),null);return found;
+        DiagnosticLog.get().record(DiagnosticLog.Event.SCAN_BEGIN,0,null,null,null,0,plan.size(),null);
+        // DirectRoutes pipelines TCP and service validation. Do not cut off at 32 TCP answers:
+        // those can all be unrelated Google services while later Drive frontends remain unseen.
+        return plan;
     }
 
     private void probe(DirectRoutes.Route route) throws IOException {
@@ -331,11 +339,13 @@ public final class GoogleNetwork extends Application {
         if (!"https".equals(url.getProtocol()) || !DirectNet.googleHost(url.getHost())
                 || (url.getPort() != -1 && url.getPort() != 443) || url.getUserInfo() != null)
             throw new IOException("不允许的 Google 数据地址");
+        refreshNetworkPath();
         final long epoch;
         final boolean system;
         synchronized(policyLock){epoch=networkEpoch;system=systemNetwork();}
         GoogleHttp.Guard current=()->{
             guard.check();
+            refreshNetworkPath();
             synchronized(policyLock) {
                 if(epoch!=networkEpoch)throw new java.net.SocketException("网络或连接方式已改变，请重新建立连接");
             }

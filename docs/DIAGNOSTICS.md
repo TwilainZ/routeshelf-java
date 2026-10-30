@@ -10,7 +10,7 @@
 
 ## 能看到什么
 
-导出头包含版本、完整构建、包名、Android API、当前连接模式和私有缓存状态。每行 UTC 时间；`op` 是本进程操作编号，重启后可重置；`APP_START` 分隔进程。`ms` 为该阶段或操作累计毫秒；`code` 为 HTTP/Google 状态码，DNS_READY/SCAN_READY 则为候选数。
+导出头包含版本、完整构建、包名、Android API、当前连接模式和私有缓存状态。每行 UTC 时间；`op` 是本进程操作编号，重启后可重置；`APP_START` 分隔进程。`ms` 为该阶段或操作累计毫秒；`code` 为 HTTP/Google 状态码，DNS_READY 与 0.7.3 的 SCAN_BEGIN 则为候选数。
 
 | 事件 | 含义 |
 | --- | --- |
@@ -18,7 +18,7 @@
 | RANGE_BEGIN / RANGE_READY / RANGE_BOOTSTRAP | 官方范围准备、可用范围，或改用有限内置子集 |
 | RANGE_GOOG_HTTP / RANGE_CLOUD_HTTP | 官方两个列表的响应与耗时 |
 | DNS_BEGIN / DNS_READY / DNS_HTTP / DNS_FAILED | DNS 收集、结果数与加密解析状态 |
-| SCAN_BEGIN / SCAN_READY | 有界 TCP 扫描与可达候选数；不表示 TLS 已通过 |
+| SCAN_BEGIN / SCAN_READY | 0.7.3 的 SCAN_BEGIN 记录扩大计划数量，随后 TCP/TLS 同时推进；旧版 SCAN_READY 为 TCP 预筛结果，不表示 TLS 已通过 |
 | PROBE_HTTP / PROBE_OK / PROBE_FAILED | 不携带账户凭据的服务探测、TLS 验证结果 |
 | CACHE_HIT / SELECT_OK / SELECT_FAILED | 路线复用、选中端点/IP/TLS 或失败 |
 | REQUEST_READ_BEGIN / REQUEST_WRITE_BEGIN / REQUEST_HEADERS | 实际请求启动、TLS 后准备发送；无 URL、头和正文 |

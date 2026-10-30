@@ -30,8 +30,8 @@ def command(*parts):
 badging = command(args.aapt2, 'dump', 'badging', str(args.apk))
 package = re.search(r"package: name='([^']+)' versionCode='([^']+)' versionName='([^']+)'", badging)
 expected_package = 'dev.gdirect.lite.probe' if args.probe else ('dev.gdirect.lite.preview' if args.preview else 'dev.gdirect.lite')
-expected_version = '0.2.1-diagnostic-probe' if args.probe else '0.7.2-logs-preview'
-expected_code = '3' if args.probe else '11'
+expected_version = '0.2.1-diagnostic-probe' if args.probe else '0.7.3-network-preview'
+expected_code = '3' if args.probe else '12'
 if not package or package.groups() != (expected_package, expected_code, expected_version):
     raise SystemExit('APK package or diagnostic version does not match the expected build')
 if args.probe and re.search(r"uses-permission(?:-sdk-\d+)?: name='android.permission.INTERNET'", badging):
@@ -43,7 +43,7 @@ if '已取消授权；未连接 Google Drive' in resources:
     raise SystemExit('Old cancellation-only error message is still packaged in the APK')
 required_resources = ('probe_title', 'probe_explanation') if args.probe else (
     'build_identity', 'diagnostics_title', 'drive_auth_no_result', 'drive_auth_status',
-    'drive_nav_home', 'drive_create', 'ic_launcher_art', 'ic_launcher_monochrome', 'builtin_google_candidates', 'settings_title', 'connection_logs')
+    'drive_nav_home', 'drive_create', 'ic_launcher_art', 'ic_launcher_monochrome', 'builtin_google_candidates', 'settings_title', 'settings_content', 'connection_logs')
 for resource in required_resources:
     if resource not in resources:
         raise SystemExit('Missing diagnostic resource: ' + resource)
@@ -61,7 +61,10 @@ with zipfile.ZipFile(args.apk) as apk:
     dex = [apk.read(name) for name in apk.namelist() if re.fullmatch(r'classes\d*\.dex', name)]
     required_code = [args.revision]
     if not args.probe:
-        required_code += ['Ldev/gdirect/lite/SettingsActivity;', 'Ldev/gdirect/lite/network/ConnectionCheck;', 'Ldev/gdirect/lite/LogActivity;', 'Ldev/gdirect/lite/diagnostics/DiagnosticLog;', 'Ldev/gdirect/lite/diagnostics/DiagnosticLogStore;']
+        required_code += ['Ldev/gdirect/lite/SettingsActivity;', 'Ldev/gdirect/lite/SettingsActivity$Preferences;',
+                          'Landroidx/preference/PreferenceFragmentCompat;', 'Ldev/gdirect/lite/network/RouteProbeQueue;',
+                          'Ldev/gdirect/lite/network/NetworkPathTracker;', 'Ldev/gdirect/lite/network/ConnectionCheck;',
+                          'Ldev/gdirect/lite/LogActivity;', 'Ldev/gdirect/lite/diagnostics/DiagnosticLog;', 'Ldev/gdirect/lite/diagnostics/DiagnosticLogStore;']
     if args.probe:
         required_code.append('Ldev/gdirect/lite/probe/PackageProbeActivity;')
         for forbidden in ('Ldev/gdirect/lite/DriveActivity;', 'Ldev/gdirect/lite/DownloadService;', 'Lcom/google/android/gms/auth/api/identity/AuthorizationClient;'):

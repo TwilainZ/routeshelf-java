@@ -12,6 +12,7 @@ configured JDK/SDK shell; review new licenses before distributing.
 | Resolved module | License |
 | --- | --- |
 | `androidx.activity:activity:1.8.0` | Apache-2.0 |
+| `androidx.activity:activity-ktx:1.8.0` | Apache-2.0 |
 | `androidx.annotation:annotation:1.8.1` | Apache-2.0 |
 | `androidx.annotation:annotation-experimental:1.4.1` | Apache-2.0 |
 | `androidx.annotation:annotation-jvm:1.8.1` | Apache-2.0 |
@@ -22,6 +23,7 @@ configured JDK/SDK shell; review new licenses before distributing.
 | `androidx.cardview:cardview:1.0.0` | Apache-2.0 |
 | `androidx.collection:collection:1.4.2` | Apache-2.0 |
 | `androidx.collection:collection-jvm:1.4.2` | Apache-2.0 |
+| `androidx.collection:collection-ktx:1.4.2` | Apache-2.0 |
 | `androidx.concurrent:concurrent-futures:1.1.0` | Apache-2.0 |
 | `androidx.constraintlayout:constraintlayout:2.1.0` | Apache-2.0 |
 | `androidx.constraintlayout:constraintlayout-core:1.0.0` | Apache-2.0 |
@@ -35,20 +37,27 @@ configured JDK/SDK shell; review new licenses before distributing.
 | `androidx.emoji2:emoji2:1.3.0` | Apache-2.0 |
 | `androidx.emoji2:emoji2-views-helper:1.3.0` | Apache-2.0 |
 | `androidx.fragment:fragment:1.5.7` | Apache-2.0 |
+| `androidx.fragment:fragment-ktx:1.3.6` | Apache-2.0 |
 | `androidx.graphics:graphics-shapes:1.0.1` | Apache-2.0 |
 | `androidx.graphics:graphics-shapes-android:1.0.1` | Apache-2.0 |
 | `androidx.interpolator:interpolator:1.0.0` | Apache-2.0 |
 | `androidx.lifecycle:lifecycle-common:2.6.2` | Apache-2.0 |
 | `androidx.lifecycle:lifecycle-livedata-core:2.6.2` | Apache-2.0 |
+| `androidx.lifecycle:lifecycle-livedata-core-ktx:2.6.2` | Apache-2.0 |
 | `androidx.lifecycle:lifecycle-process:2.6.2` | Apache-2.0 |
 | `androidx.lifecycle:lifecycle-runtime:2.6.2` | Apache-2.0 |
+| `androidx.lifecycle:lifecycle-runtime-ktx:2.6.2` | Apache-2.0 |
 | `androidx.lifecycle:lifecycle-viewmodel:2.6.2` | Apache-2.0 |
+| `androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.2` | Apache-2.0 |
 | `androidx.lifecycle:lifecycle-viewmodel-savedstate:2.6.2` | Apache-2.0 |
 | `androidx.loader:loader:1.1.0` | Apache-2.0 |
+| `androidx.preference:preference:1.2.1` | Apache-2.0 |
 | `androidx.profileinstaller:profileinstaller:1.3.1` | Apache-2.0 |
 | `androidx.recyclerview:recyclerview:1.2.1` | Apache-2.0 |
 | `androidx.resourceinspection:resourceinspection-annotation:1.0.1` | Apache-2.0 |
 | `androidx.savedstate:savedstate:1.2.1` | Apache-2.0 |
+| `androidx.savedstate:savedstate-ktx:1.2.1` | Apache-2.0 |
+| `androidx.slidingpanelayout:slidingpanelayout:1.2.0` | Apache-2.0 |
 | `androidx.startup:startup-runtime:1.1.1` | Apache-2.0 |
 | `androidx.tracing:tracing:1.0.0` | Apache-2.0 |
 | `androidx.transition:transition:1.5.0` | Apache-2.0 |
@@ -57,6 +66,7 @@ configured JDK/SDK shell; review new licenses before distributing.
 | `androidx.versionedparcelable:versionedparcelable:1.1.1` | Apache-2.0 |
 | `androidx.viewpager:viewpager:1.0.0` | Apache-2.0 |
 | `androidx.viewpager2:viewpager2:1.0.0` | Apache-2.0 |
+| `androidx.window:window:1.0.0` | Apache-2.0 |
 | `com.google.android.gms:play-services-auth:21.6.0` | [Google SDK terms](https://developer.android.com/studio/terms.html) |
 | `com.google.android.gms:play-services-auth-api-phone:18.0.2` | [Google SDK terms](https://developer.android.com/studio/terms.html) |
 | `com.google.android.gms:play-services-auth-base:18.0.10` | [Google SDK terms](https://developer.android.com/studio/terms.html) |

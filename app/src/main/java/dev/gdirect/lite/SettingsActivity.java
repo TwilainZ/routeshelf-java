@@ -9,41 +9,21 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.view.Gravity;
 import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.material.appbar.MaterialToolbar;
-import com.google.android.material.button.MaterialButton;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 /** One stable destination for preferences, account actions and troubleshooting. */
 public final class SettingsActivity extends AppCompatActivity {
     static final String EXTRA_ACCOUNT_ACTION="settings_account_action";
     private final Handler handler=new Handler(Looper.getMainLooper());
-    private LinearLayout content;
-    private TextView connection,account;
-    private MaterialButton mode,check,workers,connectAccount,manageAccount,disconnectAccount,revokeAccount;
-    private android.widget.ProgressBar progress;
-    private boolean visible;
-    private final Runnable tick=new Runnable(){public void run(){if(!visible)return;render();handler.postDelayed(this,500);}};
     private int dp(int n){return Math.round(n*getResources().getDisplayMetrics().density);}
     private TextView label(String text,int size) {
-        TextView label=new TextView(this);label.setText(text);label.setTextSize(size);
-        label.setPadding(dp(20),dp(8),dp(20),dp(8));return label;
-    }
-    private void section(String title) {
-        TextView label=label(title,14);label.setTypeface(android.graphics.Typeface.DEFAULT,android.graphics.Typeface.BOLD);
-        label.setTextColor(com.google.android.material.color.MaterialColors.getColor(this,androidx.appcompat.R.attr.colorPrimary,0));
-        label.setPadding(dp(20),dp(28),dp(20),dp(8));label.setAccessibilityHeading(true);content.addView(label);
-    }
-    private MaterialButton row(String title,View.OnClickListener action) {
-        MaterialButton row=new MaterialButton(this,null,R.attr.settingsRowStyle);
-        row.setText(title);row.setAllCaps(false);row.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);
-        row.setMinHeight(dp(56));row.setSingleLine(false);row.setMaxLines(3);row.setPadding(dp(20),dp(8),dp(20),dp(8));
-        row.setOnClickListener(action);content.addView(row,new LinearLayout.LayoutParams(-1,-2));return row;
+        TextView view=new TextView(this);view.setText(text);view.setTextSize(size);return view;
     }
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -57,33 +37,9 @@ public final class SettingsActivity extends AppCompatActivity {
         MaterialToolbar toolbar=new MaterialToolbar(this);toolbar.setTitle(R.string.settings_title);
         toolbar.setNavigationIcon(R.drawable.ic_back);toolbar.setNavigationContentDescription("返回");
         toolbar.setNavigationOnClickListener(v->finish());root.addView(toolbar,new LinearLayout.LayoutParams(-1,-2));
-        ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
-        content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(0,0,0,dp(24));scroll.addView(content);
-        section("账户与权限");account=label("",14);content.addView(account);
-        connectAccount=row("连接 Google Drive",v->accountAction("connect"));
-        manageAccount=row(getString(R.string.drive_manage_access),v->accountAction("manage"));
-        disconnectAccount=row(getString(R.string.drive_disconnect),v->new MaterialAlertDialogBuilder(this).setTitle(R.string.drive_disconnect)
-            .setMessage("断开本机连接并停止当前账户的传输。Google 授权仍可在下次连接时使用。")
-            .setNegativeButton(android.R.string.cancel,null).setPositiveButton(R.string.drive_disconnect,(d,w)->accountAction("disconnect")).show());
-        revokeAccount=row(getString(R.string.drive_revoke),v->accountAction("revoke"));
-        section("连接");
-        mode=row("",v->chooseMode());
-        content.addView(label("浏览和传输共用此设置。自动模式会验证候选、复用可用线路，失败后尝试备用线路，无需手填 IP。",14));
-        connection=label("",14);connection.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);content.addView(connection);
-        progress=new android.widget.ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);progress.setIndeterminate(true);
-        LinearLayout.LayoutParams bar=new LinearLayout.LayoutParams(-1,dp(4));bar.setMargins(dp(20),dp(8),dp(20),dp(8));content.addView(progress,bar);
-        check=row("检测连接",v->{if(GoogleNetwork.get().connectionCheck().active())GoogleNetwork.get().cancelCheck();else GoogleNetwork.get().startCheck();render();});
-        content.addView(label("可离开此页继续检测，结果会保留。连接检测不登录、不读取私人文件；登录与更新授权仍依赖 Google Play 服务的系统网络。",14));
-        row(getString(R.string.builtin_google_candidates),v->new MaterialAlertDialogBuilder(this).setTitle(R.string.builtin_google_candidates)
-            .setMessage(GoogleNetwork.get().builtInCandidates()).setPositiveButton(android.R.string.ok,null).show());
-        section("传输");workers=row("",v->chooseWorkers());
-        content.addView(label("并行数应用于之后的下载，当前任务不变。下载文件保存在“下载/GDirect Lite”。",14));
-        section("关于与帮助");
-        row(getString(R.string.drive_privacy),v->showPrivacy());
-        row(getString(R.string.connection_logs),v->startActivity(new Intent(this,LogActivity.class)));
-        row(getString(R.string.diagnostics_title),v->showDiagnostics());
-        row(getString(R.string.licenses),v->showLicenses());
-        content.addView(label(AppDiagnostics.buildLabel(this),14));render();
+        androidx.fragment.app.FragmentContainerView body=new androidx.fragment.app.FragmentContainerView(this);
+        body.setId(R.id.settings_content);root.addView(body,new LinearLayout.LayoutParams(-1,0,1));
+        if(state==null)getSupportFragmentManager().beginTransaction().replace(R.id.settings_content,new Preferences()).commit();
     }
     private void showDiagnostics() {
         String details = AppDiagnostics.describe(this,
@@ -156,45 +112,104 @@ public final class SettingsActivity extends AppCompatActivity {
         startActivity(new Intent(this,DriveActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP)
             .putExtra(EXTRA_ACCOUNT_ACTION,action));finish();
     }
-    private void chooseMode() {
-        GoogleNetwork net=GoogleNetwork.get();int selected=net.systemNetwork()?2:net.relayEnabled()?1:0;
-        new MaterialAlertDialogBuilder(this).setTitle("连接方式")
-            .setSingleChoiceItems(new String[]{"自动直连 · 仅 Google（默认）","自动连接 · 优先已知中转","系统网络"},selected,(d,n)->{
-                d.dismiss();if(n==selected)return;
-                if(n==1)new MaterialAlertDialogBuilder(this).setTitle(R.string.relay_title).setMessage(R.string.relay_explanation)
-                    .setNegativeButton(android.R.string.cancel,null).setPositiveButton(R.string.relay_allow,(a,b)->applyMode(1)).show();
-                else applyMode(n);
-            }).setNegativeButton(android.R.string.cancel,null).show();
+    /** AndroidX owns list spacing, two-line rows, focus, ripple and preference dialogs. */
+    public static final class Preferences extends androidx.preference.PreferenceFragmentCompat {
+        private final Handler handler=new Handler(Looper.getMainLooper());
+        private androidx.preference.ListPreference mode,workers;
+        private androidx.preference.Preference stateRow,check,account,connectAccount,manageAccount,disconnectAccount,revokeAccount;
+        private boolean visible;
+        private int pendingMode=-1;
+        private final Runnable tick=new Runnable(){public void run(){if(!visible)return;render();handler.postDelayed(this,500);}};
+        private SettingsActivity host(){return (SettingsActivity)requireActivity();}
+        private androidx.preference.PreferenceCategory category(String title){
+            androidx.preference.PreferenceCategory group=new androidx.preference.PreferenceCategory(requireContext());
+            group.setTitle(title);group.setIconSpaceReserved(false);getPreferenceScreen().addPreference(group);return group;
+        }
+        private androidx.preference.Preference row(androidx.preference.PreferenceCategory group,String title,String summary,Runnable action){
+            androidx.preference.Preference row=new androidx.preference.Preference(requireContext());row.setTitle(title);row.setSummary(summary);
+            row.setIconSpaceReserved(false);row.setPersistent(false);row.setSelectable(action!=null);
+            if(action!=null)row.setOnPreferenceClickListener(p->{action.run();return true;});group.addPreference(row);return row;
+        }
+        @Override public void onCreatePreferences(Bundle state,String rootKey){
+            if(state!=null)pendingMode=state.getInt("pending_connection_mode",-1);
+            setPreferenceScreen(getPreferenceManager().createPreferenceScreen(requireContext()));
+            androidx.preference.PreferenceCategory connection=category("连接");
+            mode=new androidx.preference.ListPreference(requireContext());mode.setKey("connection_mode_ui");mode.setPersistent(false);
+            mode.setTitle("连接方式");mode.setDialogTitle("连接方式");mode.setIconSpaceReserved(false);
+            mode.setEntries(new String[]{"仅 Google 直连","允许已知中转","系统网络"});mode.setEntryValues(new String[]{"0","1","2"});
+            mode.setOnPreferenceChangeListener((p,value)->{
+                int selected=Integer.parseInt(value.toString());
+                if(selected==GoogleNetwork.get().connectionMode()&&pendingMode<0)return false;
+                if(selected==1)new MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.relay_title).setMessage(R.string.relay_explanation)
+                    .setNegativeButton(android.R.string.cancel,null).setPositiveButton(R.string.relay_allow,(d,w)->requestMode(selected)).show();
+                else requestMode(selected);return false;
+            });connection.addPreference(mode);
+            stateRow=row(connection,"线路状态","",null);
+            check=row(connection,"检测连接","重新验证 Google API 和文件下载服务",()->{
+                GoogleNetwork net=GoogleNetwork.get();if(net.connectionCheck().active())net.cancelCheck();else net.startCheck();render();
+            });
+            row(connection,"连接日志与反馈","查看阶段耗时、复制或保存诊断日志",()->startActivity(new Intent(requireContext(),LogActivity.class)));
+            row(connection,"内置 Google 候选","查看范围、日期和来源；连接时自动验证",()->new MaterialAlertDialogBuilder(requireContext())
+                .setTitle(R.string.builtin_google_candidates).setMessage(GoogleNetwork.get().builtInCandidates()).setPositiveButton(android.R.string.ok,null).show());
+            androidx.preference.PreferenceCategory accounts=category("Google 账户");
+            account=row(accounts,"账户状态","",null);
+            connectAccount=row(accounts,"连接 Google Drive","在 Google 页面完成授权",()->host().accountAction("connect"));
+            manageAccount=row(accounts,"文件管理权限","按需允许新建、上传和修改文件",()->host().accountAction("manage"));
+            disconnectAccount=row(accounts,"断开连接","停止本机账户传输，保留 Google 授权",()->new MaterialAlertDialogBuilder(requireContext())
+                .setTitle(R.string.drive_disconnect).setMessage("断开本机连接并停止当前账户的传输。下次可重新连接。")
+                .setNegativeButton(android.R.string.cancel,null).setPositiveButton(R.string.drive_disconnect,(d,w)->host().accountAction("disconnect")).show());
+            revokeAccount=row(accounts,"撤销 Google 授权","同时撤销此应用的 Google 访问权限",()->host().accountAction("revoke"));
+            androidx.preference.PreferenceCategory transfers=category("下载");
+            workers=new androidx.preference.ListPreference(requireContext());workers.setTitle("并行连接数");workers.setDialogTitle("下载并行连接数");
+            workers.setKey("transfer_workers_ui");workers.setPersistent(false);workers.setIconSpaceReserved(false);
+            workers.setEntries(new String[]{"1 条 · 稳妥","4 条 · 推荐","8 条 · 实验"});workers.setEntryValues(new String[]{"1","4","8"});
+            workers.setOnPreferenceChangeListener((p,value)->{requireContext().getSharedPreferences("transfer-settings",MODE_PRIVATE).edit()
+                .putInt("workers",Integer.parseInt(value.toString())).apply();render();return false;});transfers.addPreference(workers);
+            row(transfers,"保存位置","下载/GDirect Lite",null);
+            androidx.preference.PreferenceCategory about=category("关于");
+            row(about,"隐私说明","账户、文件与本机日志的使用方式",()->host().showPrivacy());
+            row(about,"应用与授权诊断","版本、签名和 Google 授权状态",()->host().showDiagnostics());
+            row(about,"开源许可","应用与第三方组件声明",()->host().showLicenses());
+            row(about,"版本",AppDiagnostics.buildLabel(requireContext()),null);render();
+        }
+        private void requestMode(int selected){
+            if(DownloadService.snapshot.active){android.widget.Toast.makeText(requireContext(),"请先停止当前传输，再切换连接方式",android.widget.Toast.LENGTH_LONG).show();return;}
+            pendingMode=selected;GoogleNetwork net=GoogleNetwork.get();
+            if(net.connectionCheck().active())net.cancelCheck();render();
+        }
+        @Override public void onDisplayPreferenceDialog(androidx.preference.Preference preference){
+            if(!(preference instanceof androidx.preference.ListPreference)){super.onDisplayPreferenceDialog(preference);return;}
+            androidx.preference.ListPreference list=(androidx.preference.ListPreference)preference;
+            new MaterialAlertDialogBuilder(requireContext()).setTitle(list.getDialogTitle())
+                .setSingleChoiceItems(list.getEntries(),list.findIndexOfValue(list.getValue()),(dialog,index)->{
+                    String value=list.getEntryValues()[index].toString();dialog.dismiss();
+                    if(list.callChangeListener(value))list.setValue(value);
+                }).setNegativeButton(android.R.string.cancel,null).show();
+        }
+        private void render(){
+            if(mode==null||!isAdded())return;
+            GoogleNetwork net=GoogleNetwork.get();ConnectionCheck.Snapshot state=net.connectionCheck();boolean transfer=DownloadService.snapshot.active;
+            if(pendingMode>=0&&!state.active()){
+                if(!transfer)net.connectionMode(pendingMode);
+                else android.widget.Toast.makeText(requireContext(),"传输已开始，请停止后再切换连接方式",android.widget.Toast.LENGTH_LONG).show();
+                pendingMode=-1;state=net.connectionCheck();
+            }
+            mode.setValue(Integer.toString(net.connectionMode()));mode.setSummary(mode.getEntry()+(transfer?" · 停止当前传输后可切换":""));mode.setEnabled(!transfer&&pendingMode<0);
+            stateRow.setSummary(pendingMode>=0?"正在停止旧检测，随后切换连接方式…":
+                state.active()?"正在检测，可取消\n"+net.summary():state.detail.isEmpty()?net.summary():state.detail);
+            check.setTitle(state.state==ConnectionCheck.State.CANCELLING?"正在取消…":state.active()?"取消检测":"重新检测连接");
+            check.setEnabled(!transfer&&pendingMode<0&&state.state!=ConnectionCheck.State.CANCELLING&&!net.systemNetwork());
+            check.setSummary(transfer?"当前传输结束后可重新检测":net.systemNetwork()?"使用设备的网络与代理设置":"重新验证 Google API 和文件下载服务");
+            boolean connected=DriveSession.INSTANCE.connected(),revoking=GoogleAuthorization.revoking.get();
+            account.setSummary(connected?(DriveSession.INSTANCE.writable()?"已授权 · 可以管理文件":"已授权 · 只读访问"):"尚未连接");
+            connectAccount.setVisible(!connected);manageAccount.setVisible(connected&&!DriveSession.INSTANCE.writable());
+            disconnectAccount.setVisible(connected);revokeAccount.setVisible(connected);
+            connectAccount.setEnabled(!revoking);manageAccount.setEnabled(!revoking);disconnectAccount.setEnabled(!revoking);revokeAccount.setEnabled(!revoking);
+            int count=requireContext().getSharedPreferences("transfer-settings",MODE_PRIVATE).getInt("workers",4);
+            workers.setValue(Integer.toString(count));workers.setSummary(workers.getEntry()+"，应用于之后的下载");
+        }
+        @Override public void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);state.putInt("pending_connection_mode",pendingMode);}
+        @Override public void onStart(){super.onStart();visible=true;handler.post(tick);}
+        @Override public void onStop(){visible=false;handler.removeCallbacks(tick);super.onStop();}
     }
-    private void applyMode(int n) {
-        if(GoogleNetwork.get().connectionCheck().active()||DownloadService.snapshot.active)return;
-        GoogleNetwork.get().relayEnabled(n==1);GoogleNetwork.get().systemNetwork(n==2);render();
-    }
-    private void chooseWorkers() {
-        int count=getSharedPreferences("transfer-settings",MODE_PRIVATE).getInt("workers",4);
-        new MaterialAlertDialogBuilder(this).setTitle("下载并行连接数")
-            .setSingleChoiceItems(new String[]{"1 条 · 稳妥","4 条 · 推荐","8 条 · 实验"},count==1?0:count==8?2:1,(d,n)->{
-                getSharedPreferences("transfer-settings",MODE_PRIVATE).edit().putInt("workers",n==0?1:n==1?4:8).apply();d.dismiss();render();
-            }).setNegativeButton(android.R.string.cancel,null).show();
-    }
-    private void render() {
-        GoogleNetwork net=GoogleNetwork.get();ConnectionCheck.Snapshot state=net.connectionCheck();
-        boolean busy=state.active(),transfer=DownloadService.snapshot.active;
-        mode.setText("连接方式\n"+(net.systemNetwork()?"系统网络":net.relayEnabled()?"自动连接 · 优先已知中转":"自动直连 · 仅 Google"));mode.setEnabled(!busy&&!transfer);
-        String detail=state.detail.isEmpty()?net.summary():state.detail;
-        if(state.state==ConnectionCheck.State.SUCCEEDED)detail="上次检测完成\n"+state.detail;
-
-        if(!android.text.TextUtils.equals(connection.getText(),detail))connection.setText(detail);
-        check.setText(state.state==ConnectionCheck.State.CANCELLING?"正在取消…":busy?"取消检测":transfer?"传输期间使用当前连接":net.systemNetwork()?"系统网络由设备管理":"重新检测连接");
-        check.setEnabled(state.state!=ConnectionCheck.State.CANCELLING&&!transfer&&!net.systemNetwork());progress.setVisibility(busy?View.VISIBLE:View.GONE);
-        boolean connected=DriveSession.INSTANCE.connected(),revoking=GoogleAuthorization.revoking.get();
-        connectAccount.setVisibility(connected?View.GONE:View.VISIBLE);connectAccount.setEnabled(!revoking);
-        manageAccount.setVisibility(connected?View.VISIBLE:View.GONE);disconnectAccount.setVisibility(connected?View.VISIBLE:View.GONE);revokeAccount.setVisibility(connected?View.VISIBLE:View.GONE);
-        manageAccount.setEnabled(connected&&!DriveSession.INSTANCE.writable()&&!revoking);
-        disconnectAccount.setEnabled(connected&&!revoking);revokeAccount.setEnabled(connected&&!revoking);
-        account.setText(connected?(DriveSession.INSTANCE.writable()?"已连接 · 可管理文件":"已连接 · 只读访问"):"尚未连接；公开链接下载无需登录。");
-        workers.setText("下载并行连接数\n"+getSharedPreferences("transfer-settings",MODE_PRIVATE).getInt("workers",4)+" 条连接");
-    }
-    @Override protected void onStart(){super.onStart();visible=true;handler.post(tick);}
-    @Override protected void onStop(){visible=false;handler.removeCallbacks(tick);super.onStop();}
 }

@@ -18,7 +18,16 @@ for relay_variant in before after; do
   else
     cp app/src/main/java/dev/gdirect/lite/network/DirectRoutes.java "$relay_bench_dir/$relay_variant/DirectRoutes.java"
   fi
-  javac -d "$relay_bench_dir/$relay_variant" "$relay_bench_dir/$relay_variant/DirectRoutes.java" \
+  relay_extra_sources=()
+  if rg -q RouteProbeQueue "$relay_bench_dir/$relay_variant/DirectRoutes.java"; then
+    if [ "$relay_variant" = before ]; then
+      git show "$relay_baseline:app/src/main/java/dev/gdirect/lite/network/RouteProbeQueue.java" > "$relay_bench_dir/$relay_variant/RouteProbeQueue.java"
+    else
+      cp app/src/main/java/dev/gdirect/lite/network/RouteProbeQueue.java "$relay_bench_dir/$relay_variant/RouteProbeQueue.java"
+    fi
+    relay_extra_sources+=("$relay_bench_dir/$relay_variant/RouteProbeQueue.java")
+  fi
+  javac -d "$relay_bench_dir/$relay_variant" "$relay_bench_dir/$relay_variant/DirectRoutes.java" "${relay_extra_sources[@]}" \
     app/src/main/java/dev/gdirect/lite/network/DirectNet.java app/src/main/java/dev/gdirect/lite/transfer/TransferRules.java \
     tools/checks/src/dev/gdirect/lite/network/RelayStartupBenchmark.java
   echo "$relay_variant (synthetic 1500ms metadata delay; fixture probe, no network):"

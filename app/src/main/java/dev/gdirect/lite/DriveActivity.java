@@ -85,6 +85,7 @@ public final class DriveActivity extends AppCompatActivity {
     private boolean editing,listingFailed,retryAppend,refreshAfterTransfer;
     private boolean managementRequested;
     private long observedMutation=MutationCoordinator.INSTANCE.revision();
+    private int observedConnectionMode;
     private String uploadParent;
     private long uploadSession=-1;
     private final Runnable ticker = new Runnable() {
@@ -146,6 +147,7 @@ public final class DriveActivity extends AppCompatActivity {
 
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved);
+        observedConnectionMode=GoogleNetwork.get().connectionMode();
         folderName = getString(R.string.drive_root);
         if (saved != null) {
             managementRequested=saved.getBoolean("management_requested",false);
@@ -907,7 +909,11 @@ public final class DriveActivity extends AppCompatActivity {
         if (lastSdkStatus != null) state.putInt("last_sdk_status",lastSdkStatus);
         super.onSaveInstanceState(state);
     }
-    @Override protected void onResume() { super.onResume(); handler.post(ticker); }
+    @Override protected void onResume() {
+        super.onResume();handler.post(ticker);
+        int mode=GoogleNetwork.get().connectionMode();
+        if(mode!=observedConnectionMode){observedConnectionMode=mode;if(DriveSession.INSTANCE.connected())load(false);}
+    }
     @Override protected void onPause() { handler.removeCallbacks(ticker); super.onPause(); }
     @Override protected void onDestroy() {
         requestVersion++; if (listing != null) listing.cancel(true); network.shutdownNow(); handler.removeCallbacksAndMessages(null); super.onDestroy();
