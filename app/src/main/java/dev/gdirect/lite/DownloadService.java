@@ -1,5 +1,7 @@
 package dev.gdirect.lite;
 
+import dev.gdirect.lite.ui.AppScreens;
+
 import dev.gdirect.lite.auth.GoogleAuthorization;
 import dev.gdirect.lite.diagnostics.DiagnosticLog;
 import dev.gdirect.lite.drive.DriveApi;
@@ -204,7 +206,7 @@ public final class DownloadService extends Service {
     }
     private Notification notification() {
         Snapshot s = snapshot;
-        Intent open = new Intent(this, TransferActivity.class);
+        Intent open = AppScreens.intent(this,TransferActivity.class);
         PendingIntent pending = PendingIntent.getActivity(this, 0, open,
             PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         Notification.Builder b = new Notification.Builder(this, CHANNEL)

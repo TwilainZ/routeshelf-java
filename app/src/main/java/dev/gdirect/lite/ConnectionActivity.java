@@ -1,5 +1,7 @@
 package dev.gdirect.lite;
 
+import dev.gdirect.lite.ui.AppScreens;
+
 import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
@@ -46,8 +48,8 @@ public final class ConnectionActivity extends AppCompatActivity {
         check.setOnClickListener(v->{GoogleNetwork net=GoogleNetwork.get();if(net.connectionCheck().active())net.cancelCheck();else net.startCheck();render();});
         connect.setOnClickListener(v->startActivity(new Intent(this,DriveActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP)
             .putExtra(SettingsActivity.EXTRA_ACCOUNT_ACTION,"connect")));
-        findViewById(R.id.connection_settings).setOnClickListener(v->startActivity(new Intent(this,SettingsActivity.class).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)));
-        findViewById(R.id.connection_logs).setOnClickListener(v->startActivity(new Intent(this,LogActivity.class)));
+        findViewById(R.id.connection_settings).setOnClickListener(v->startActivity(AppScreens.intent(this,SettingsActivity.class)));
+        findViewById(R.id.connection_logs).setOnClickListener(v->startActivity(AppScreens.intent(this,LogActivity.class)));
         technicalExpanded=state!=null&&state.getBoolean("technical_expanded",false);
         View technical=findViewById(R.id.connection_technical_panel);technical.setVisibility(technicalExpanded?View.VISIBLE:View.GONE);
         MaterialButton toggle=findViewById(R.id.connection_technical_toggle);

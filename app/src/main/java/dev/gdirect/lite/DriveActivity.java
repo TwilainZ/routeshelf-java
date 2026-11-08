@@ -10,6 +10,8 @@ import dev.gdirect.lite.drive.DriveSession;
 import dev.gdirect.lite.drive.MutationCoordinator;
 import dev.gdirect.lite.preview.PreviewPolicy;
 import dev.gdirect.lite.ui.ConnectionText;
+import dev.gdirect.lite.ui.AppScreens;
+import dev.gdirect.lite.ui.FileMenu;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import android.content.Intent;
@@ -216,13 +218,17 @@ public final class DriveActivity extends AppCompatActivity {
         com.google.android.material.appbar.MaterialToolbar toolbar=new com.google.android.material.appbar.MaterialToolbar(this);
         toolbar.setTitle(R.string.app_name);container.addView(toolbar,new LinearLayout.LayoutParams(-1,-2));setSupportActionBar(toolbar);
         connectionIndicator=(MaterialButton)getLayoutInflater().inflate(R.layout.view_connection_indicator,container,false);
-        connectionIndicator.setOnClickListener(v->startActivity(new Intent(this,ConnectionActivity.class)));container.addView(connectionIndicator);
+        connectionIndicator.setOnClickListener(v->startActivity(AppScreens.intent(this,ConnectionActivity.class)));container.addView(connectionIndicator);
         LinearLayout root=column();root.setPadding(0,0,dp(8),0);root.setFocusableInTouchMode(true);
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override public void handleOnBackPressed() {
-                if (!activeSearch.isEmpty()) clearSearch();
-                else if (!parents.isEmpty()) goUp();
-                else { setEnabled(false); getOnBackPressedDispatcher().onBackPressed(); }
+                if (!editing&&(!activeSearch.isEmpty()||search.getText().length()>0)) clearSearch();
+                else if (!editing&&!parents.isEmpty()) goUp();
+                else {
+                    setEnabled(false);
+                    try { getOnBackPressedDispatcher().onBackPressed(); }
+                    finally { setEnabled(true); }
+                }
             }
         });
         signInPanel=column();signInPanel.setPadding(dp(24),dp(24),dp(24),dp(24));
@@ -269,9 +275,7 @@ public final class DriveActivity extends AppCompatActivity {
         location.setTypeface(android.graphics.Typeface.DEFAULT,android.graphics.Typeface.BOLD);
         location.setMinHeight(dp(48));location.setGravity(Gravity.CENTER_VERTICAL);
         location.setTooltipText(getString(R.string.drive_choose_library));
-        location.setOnClickListener(v->{if(!editing&&DriveSession.INSTANCE.connected())new MaterialAlertDialogBuilder(this).setTitle(R.string.drive_view)
-            .setSingleChoiceItems(R.array.drive_views,currentView.ordinal(),(dialog,n)->{dialog.dismiss();navigate(DriveApi.View.values()[n]);})
-            .setNegativeButton(android.R.string.cancel,null).show();});
+        location.setOnClickListener(v->chooseLibrary());
         LinearLayout pathRow=new LinearLayout(this);pathRow.setGravity(Gravity.CENTER_VERTICAL);
         location.setMaxLines(2);location.setEllipsize(TextUtils.TruncateAt.END);
         pathRow.addView(location,new LinearLayout.LayoutParams(0,-2,1));
@@ -304,7 +308,7 @@ public final class DriveActivity extends AppCompatActivity {
         transferPanel.addView(transferProgress,new LinearLayout.LayoutParams(-1,dp(4)));
         LinearLayout transferActions=new LinearLayout(this);
         transferDetails=button(R.string.drive_transfer_open);
-        transferDetails.setOnClickListener(v->startActivity(new Intent(this,TransferActivity.class)));
+        transferDetails.setOnClickListener(v->startActivity(AppScreens.intent(this,TransferActivity.class)));
         transferActions.addView(transferDetails,new LinearLayout.LayoutParams(0,-2,1));
         cancelTransfer=button(R.string.drive_cancel_transfer);
         cancelTransfer.setOnClickListener(v->{
@@ -523,6 +527,10 @@ public final class DriveActivity extends AppCompatActivity {
         if(create!=null){create.setVisibility(wasConnected&&currentView==DriveApi.View.FOLDER?View.VISIBLE:View.GONE);create.setEnabled(!loading&&!editing&&!DownloadService.snapshot.active);}
 
         location.setVisibility(wasConnected ? View.VISIBLE : View.GONE);
+        boolean library=currentView!=DriveApi.View.RECENT;
+        location.setClickable(library&&!editing);
+        location.setCompoundDrawablesRelativeWithIntrinsicBounds(0,0,library?R.drawable.ic_expand:0,0);
+        location.setTooltipText(library?getString(R.string.drive_choose_library):null);
         search.setEnabled(wasConnected && !loading&&!editing);
         up.setVisibility(parents.isEmpty() ? View.GONE : View.VISIBLE);
         up.setEnabled(!loading&&!editing);
@@ -545,10 +553,21 @@ public final class DriveActivity extends AppCompatActivity {
         load(false);
     }
 
+    private void chooseLibrary(){
+        if(editing||!DriveSession.INSTANCE.connected()||currentView==DriveApi.View.RECENT)return;
+        DriveApi.View[] views={DriveApi.View.FOLDER,DriveApi.View.ALL,DriveApi.View.STARRED,DriveApi.View.SHARED,DriveApi.View.TRASH,DriveApi.View.DRIVES};
+        String[] labels=new String[views.length],all=getResources().getStringArray(R.array.drive_views);int selected=-1;
+        for(int i=0;i<views.length;i++){labels[i]=all[views[i].ordinal()];if(currentView==views[i])selected=i;}
+        new MaterialAlertDialogBuilder(this).setTitle(R.string.drive_view).setSingleChoiceItems(labels,selected,(dialog,n)->{
+            dialog.dismiss();navigate(views[n]);
+        }).setNegativeButton(android.R.string.cancel,null).show();
+    }
+
     private void clearSearch() {
-        if(loading||editing)return;
+        if(editing)return;
+        boolean applied=!activeSearch.isEmpty();
         search.setText("");activeSearch="";
-        if(DriveSession.INSTANCE.connected())load(false);
+        if(applied&&DriveSession.INSTANCE.connected())load(false);
     }
 
     private void startSearch() {
@@ -714,23 +733,42 @@ public final class DriveActivity extends AppCompatActivity {
             dialog.dismiss();runEdit(api->{if(entry==null)api.createFolder(parent,name);else api.rename(entry.id,name);});
         }));dialog.show();
     }
-    private void fileActions(DriveApi.FileEntry entry) {
-        if(!managementReady())return;
-        String[] choices=entry.trashed?new String[]{getString(R.string.drive_restore),getString(R.string.drive_delete_forever)}:new String[]{getString(R.string.drive_rename),getString(entry.starred?R.string.drive_unstar:R.string.drive_star),getString(R.string.drive_trash),getString(R.string.drive_move),getString(R.string.drive_share)};
-        new MaterialAlertDialogBuilder(this).setTitle(entry.name).setItems(choices,(dialog,n)->{
-            if(entry.trashed){
-                if(n==0)runEdit(api->api.trash(entry.id,false));
-                else new MaterialAlertDialogBuilder(this).setTitle(R.string.drive_delete_forever).setMessage(getString(R.string.drive_delete_forever_warning,entry.name))
-                    .setNegativeButton(android.R.string.cancel,null).setPositiveButton(R.string.drive_delete_forever,(a,b)->runEdit(api->api.deletePermanently(entry.id))).show();
-                return;
-            }
-            if(n==0){editName(entry);return;}
-            if(n==1){runEdit(api->api.star(entry.id,!entry.starred));return;}
-            if(n==3){chooseDestination(entry);return;}
-            if(n==4){sharing(entry);return;}
-            new MaterialAlertDialogBuilder(this).setTitle(R.string.drive_trash).setMessage(getString(R.string.drive_trash_confirm,entry.name))
-                .setNegativeButton(android.R.string.cancel,null).setPositiveButton(R.string.drive_trash,(d,w)->runEdit(api->api.trash(entry.id,true))).show();
-        }).show();
+    private int fileMenuLabel(FileMenu.Action action,DriveApi.FileEntry entry){
+        switch(action){
+            case OPEN:return entry.shortcut?R.string.drive_open_shortcut:entry.folder?R.string.drive_open_folder:R.string.drive_preview;
+            case DOWNLOAD:return entry.exportMime.isEmpty()?R.string.drive_download:R.string.drive_export;
+            case DETAILS:return R.string.drive_details;
+            case SHARE:return R.string.drive_share;
+            case COPY_LINK:return R.string.drive_copy_link;
+            case RENAME:return R.string.drive_rename;
+            case STAR:return entry.starred?R.string.drive_unstar:R.string.drive_star;
+            case MOVE:return R.string.drive_move;
+            case RESTORE:return R.string.drive_restore;
+            case TRASH:return R.string.drive_trash;
+            case DELETE:return R.string.drive_delete_forever;
+            default:throw new IllegalArgumentException("Unknown file action");
+        }
+    }
+    private void performFileAction(FileMenu.Action action,DriveApi.FileEntry entry){
+        switch(action){
+            case OPEN:if(entry.shortcut)openShortcut(entry);else if(entry.folder)enterFolder(entry);else openPreview(entry);break;
+            case DOWNLOAD:download(entry);break;
+            case DETAILS:fileDetails(entry);break;
+            case SHARE:sharing(entry);break;
+            case COPY_LINK:copyLink(entry);break;
+            case RENAME:editName(entry);break;
+            case STAR:runEdit(api->api.star(entry.id,!entry.starred));break;
+            case MOVE:chooseDestination(entry);break;
+            case RESTORE:runEdit(api->api.trash(entry.id,false));break;
+            case TRASH:case DELETE:
+                if(!managementReady())return;
+                boolean permanently=action==FileMenu.Action.DELETE;
+                new MaterialAlertDialogBuilder(this).setTitle(permanently?R.string.drive_delete_forever:R.string.drive_trash)
+                    .setMessage(getString(permanently?R.string.drive_delete_forever_warning:R.string.drive_trash_confirm,entry.name))
+                    .setNegativeButton(android.R.string.cancel,null).setPositiveButton(permanently?R.string.drive_delete_forever:R.string.drive_trash,(dialog,n)->{
+                        if(permanently)runEdit(api->api.deletePermanently(entry.id));else runEdit(api->api.trash(entry.id,true));
+                    }).show();break;
+        }
     }
     private void chooseDestination(DriveApi.FileEntry entry) {
         if(!managementReady())return;
@@ -783,12 +821,13 @@ public final class DriveActivity extends AppCompatActivity {
                 catch(IOException e){message.setText(e.getMessage());}return;
             }
             if(n==1){sharePerson(entry);return;}
-            if(n==2){new MaterialAlertDialogBuilder(this).setTitle(R.string.drive_share_anyone).setMessage(R.string.drive_share_public_warning)
+            if(n==2){if(!managementReady())return;new MaterialAlertDialogBuilder(this).setTitle(R.string.drive_share_anyone).setMessage(R.string.drive_share_public_warning)
                 .setNegativeButton(android.R.string.cancel,null).setPositiveButton(R.string.drive_share_anyone,(a,b)->runEdit(api->api.share(entry.id,null,false,true))).show();return;}
             showPermissions(entry);
         }).show();
     }
     private void sharePerson(DriveApi.FileEntry entry) {
+        if(!managementReady())return;
         LinearLayout content=column();content.setPadding(dp(20),0,dp(20),0);
         TextInputLayout field=new TextInputLayout(this);field.setHint(getString(R.string.drive_email));
         TextInputEditText email=new TextInputEditText(field.getContext());email.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);field.addView(email);content.addView(field);
@@ -837,7 +876,7 @@ public final class DriveActivity extends AppCompatActivity {
         MaterialAlertDialogBuilder details=new MaterialAlertDialogBuilder(this).setTitle(entry.name)
             .setMessage(getString(R.string.drive_details_body,entry.mime,entry.size<0?getString(R.string.drive_size_unknown):android.text.format.Formatter.formatFileSize(this,entry.size),entry.modified.isEmpty()?getString(R.string.drive_size_unknown):entry.modified))
             .setPositiveButton(android.R.string.ok,null);
-        if(entry.downloadable)details.setNeutralButton(entry.exportMime.isEmpty()?R.string.drive_download:R.string.drive_export,(dialog,which)->download(entry));
+        if(entry.downloadable&&!DownloadService.snapshot.active)details.setNeutralButton(entry.exportMime.isEmpty()?R.string.drive_download:R.string.drive_export,(dialog,which)->download(entry));
         details.show();
     }
     private final class FileAdapter extends BaseAdapter {
@@ -879,33 +918,35 @@ public final class DriveActivity extends AppCompatActivity {
                 detail+=" · "+android.text.format.DateUtils.getRelativeTimeSpanString(modified,System.currentTimeMillis(),android.text.format.DateUtils.MINUTE_IN_MILLIS);
             }catch(java.time.format.DateTimeParseException ignored){}
             row.detail.setText(detail);
-            int action=entry.shortcut?R.string.drive_open_shortcut:entry.folder?R.string.drive_open_folder:previewable?R.string.drive_preview:R.string.drive_details;
-            row.content.setContentDescription(getString(R.string.drive_action_named,getString(action),entry.name+" · "+detail));
+            int descriptionAction=entry.trashed?R.string.drive_details:entry.shortcut?R.string.drive_open_shortcut:entry.folder?R.string.drive_open_folder:previewable?R.string.drive_preview:R.string.drive_details;
+            row.content.setContentDescription(getString(R.string.drive_action_named,getString(descriptionAction),entry.name+" · "+detail));
             row.name.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);row.detail.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
             row.content.setEnabled(!loading&&!editing);row.content.setFocusable(true);
-            row.content.setOnClickListener(v->{if(!rememberEntry(entry))return;if(entry.shortcut)openShortcut(entry);else if(entry.folder)enterFolder(entry);else if(previewable)openPreview(entry);else fileDetails(entry);});
+            row.content.setOnClickListener(v->{if(!rememberEntry(entry))return;if(entry.trashed)fileDetails(entry);else if(entry.shortcut)openShortcut(entry);else if(entry.folder)enterFolder(entry);else if(previewable)openPreview(entry);else fileDetails(entry);});
             row.more.setContentDescription(getString(R.string.drive_action_named,getString(R.string.drive_more_actions),entry.name));row.more.setEnabled(!loading&&!editing);
             row.more.setOnClickListener(v->{
                 androidx.appcompat.widget.PopupMenu popup=new androidx.appcompat.widget.PopupMenu(DriveActivity.this,row.more);
-                popup.getMenu().add(0,1,0,R.string.drive_details);
-                if(entry.downloadable)popup.getMenu().add(0,2,1,entry.exportMime.isEmpty()?R.string.drive_download:R.string.drive_export).setEnabled(!DownloadService.snapshot.active);
-                if(!entry.trashed)popup.getMenu().add(0,3,2,R.string.drive_copy_link);
-                if(currentView!=DriveApi.View.DRIVES)popup.getMenu().add(0,4,3,R.string.drive_file_actions);
-                if(!entry.trashed)popup.getMenu().add(0,5,4,R.string.drive_share);
-                popup.setOnMenuItemClickListener(item->{if(!rememberEntry(entry))return true;switch(item.getItemId()) {
-                    case 1:fileDetails(entry);break;case 2:download(entry);break;case 3:copyLink(entry);break;case 4:fileActions(entry);break;case 5:sharing(entry);break;default:return false;
-                }return true;});popup.show();
+                int menuVersion=requestVersion;
+                for(FileMenu.Action action:FileMenu.actions(entry,currentView==DriveApi.View.DRIVES)){
+                    popup.getMenu().add(action.group,action.ordinal()+1,action.ordinal(),fileMenuLabel(action,entry))
+                        .setEnabled(action!=FileMenu.Action.DOWNLOAD||!DownloadService.snapshot.active);
+                }
+                popup.getMenu().setGroupDividerEnabled(true);
+                popup.setOnMenuItemClickListener(item->{
+                    if(menuVersion!=requestVersion||loading||editing||!rememberEntry(entry))return true;
+                    performFileAction(FileMenu.Action.values()[item.getItemId()-1],entry);return true;
+                });popup.show();
             });return row.root;
         }
     }
 
     @Override public boolean onCreateOptionsMenu(Menu menu) {
-        menu.add(0,6,0,R.string.drive_refresh);
-        menu.add(0,10,1,R.string.drive_sort);
-        menu.add(0,13,2,R.string.drive_public_download);
-        menu.add(0,9,3,R.string.drive_transfer_details);
-        menu.add(0,11,4,R.string.settings_title);
-        menu.add(0,14,5,R.string.connection_status_title);
+        menu.add(1,6,0,R.string.drive_refresh);
+        menu.add(1,10,1,R.string.drive_sort);
+        menu.add(2,13,2,R.string.drive_public_download);
+        menu.add(2,9,3,R.string.drive_transfer_details);
+        menu.add(3,11,4,R.string.settings_title);
+        menu.setGroupDividerEnabled(true);
         return true;
     }
     @Override public boolean onPrepareOptionsMenu(Menu menu) {
@@ -914,11 +955,10 @@ public final class DriveActivity extends AppCompatActivity {
         return super.onPrepareOptionsMenu(menu);
     }
     @Override public boolean onOptionsItemSelected(MenuItem item) {
-        if(item.getItemId()==14){startActivity(new Intent(this,ConnectionActivity.class));return true;}
-        if(item.getItemId()==13){startActivity(new Intent(this,MainActivity.class));return true;}
+        if(item.getItemId()==13){startActivity(AppScreens.intent(this,MainActivity.class));return true;}
         if (item.getItemId() == android.R.id.home) { if(!activeSearch.isEmpty())clearSearch();else goUp(); return true; }
         if(item.getItemId()==6){load(false);return true;}
-        if(item.getItemId()==9){startActivity(new Intent(this,TransferActivity.class));return true;}
+        if(item.getItemId()==9){startActivity(AppScreens.intent(this,TransferActivity.class));return true;}
         if(item.getItemId()==10){
             new MaterialAlertDialogBuilder(this).setTitle(R.string.drive_sort)
                 .setSingleChoiceItems(R.array.drive_sorts,currentSort.ordinal(),(dialog,n)->{
@@ -927,7 +967,7 @@ public final class DriveActivity extends AppCompatActivity {
                 }).setNegativeButton(android.R.string.cancel,null).show();return true;
         }
         if(item.getItemId()==11){
-            Intent settings=new Intent(this,SettingsActivity.class).putExtra("authorization_phase",authorizationPhase);
+            Intent settings=AppScreens.intent(this,SettingsActivity.class).putExtra("authorization_phase",authorizationPhase);
             if(lastActivityResult!=null)settings.putExtra("last_activity_result",lastActivityResult);
             if(lastSdkStatus!=null)settings.putExtra("last_sdk_status",lastSdkStatus);
             startActivity(settings);return true;

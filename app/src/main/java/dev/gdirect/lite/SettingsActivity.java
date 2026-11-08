@@ -1,5 +1,7 @@
 package dev.gdirect.lite;
 
+import dev.gdirect.lite.ui.AppScreens;
+
 import dev.gdirect.lite.auth.GoogleAuthorization;
 import dev.gdirect.lite.diagnostics.AppDiagnostics;
 import dev.gdirect.lite.drive.DriveSession;
@@ -41,6 +43,7 @@ public final class SettingsActivity extends AppCompatActivity {
         body.setId(R.id.settings_content);root.addView(body,new LinearLayout.LayoutParams(-1,0,1));
         if(state==null)getSupportFragmentManager().beginTransaction().replace(R.id.settings_content,new Preferences()).commit();
     }
+    @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);}
     private void showDiagnostics() {
         String details = AppDiagnostics.describe(this,
             getIntent().hasExtra("authorization_phase")?getIntent().getStringExtra("authorization_phase"):"not-requested",
@@ -116,7 +119,7 @@ public final class SettingsActivity extends AppCompatActivity {
     public static final class Preferences extends androidx.preference.PreferenceFragmentCompat {
         private final Handler handler=new Handler(Looper.getMainLooper());
         private androidx.preference.ListPreference mode,workers;
-        private androidx.preference.Preference stateRow,check,account,connectAccount,manageAccount,disconnectAccount,revokeAccount;
+        private androidx.preference.Preference stateRow,account,connectAccount,manageAccount,disconnectAccount,revokeAccount;
         private boolean visible;
         private int pendingMode=-1;
         private final Runnable tick=new Runnable(){public void run(){if(!visible)return;render();handler.postDelayed(this,500);}};
@@ -144,11 +147,8 @@ public final class SettingsActivity extends AppCompatActivity {
                     .setNegativeButton(android.R.string.cancel,null).setPositiveButton(R.string.relay_allow,(d,w)->requestMode(selected)).show();
                 else requestMode(selected);return false;
             });connection.addPreference(mode);
-            stateRow=row(connection,"连接状态","",()->startActivity(new Intent(requireContext(),ConnectionActivity.class)));
-            check=row(connection,"检测连接","重新验证 Google API 和文件下载服务",()->{
-                GoogleNetwork net=GoogleNetwork.get();if(net.connectionCheck().active())net.cancelCheck();else net.startCheck();render();
-            });
-            row(connection,"连接日志与反馈","查看阶段耗时、复制或保存诊断日志",()->startActivity(new Intent(requireContext(),LogActivity.class)));
+            stateRow=row(connection,"连接状态与检测","",()->startActivity(AppScreens.intent(requireContext(),ConnectionActivity.class)));
+            row(connection,"连接日志与反馈","查看阶段耗时、复制或保存诊断日志",()->startActivity(AppScreens.intent(requireContext(),LogActivity.class)));
             row(connection,"内置 Google 候选","查看范围、日期和来源；连接时自动验证",()->new MaterialAlertDialogBuilder(requireContext())
                 .setTitle(R.string.builtin_google_candidates).setMessage(GoogleNetwork.get().builtInCandidates()).setPositiveButton(android.R.string.ok,null).show());
             androidx.preference.PreferenceCategory accounts=category("Google 账户");
@@ -198,12 +198,9 @@ public final class SettingsActivity extends AppCompatActivity {
             stateRow.setSummary(pendingMode>=0?"正在停止旧检测，随后切换连接方式…":
                 dev.gdirect.lite.ui.ConnectionText.headline(net.health(),DriveSession.INSTANCE.connected(),
                     GoogleAuthorization.memory(requireContext()).state()==dev.gdirect.lite.auth.RememberedAuthorization.State.RESTORING,state.active()));
-            check.setTitle(state.state==ConnectionCheck.State.CANCELLING?"正在取消…":state.active()?"取消检测":"重新检测连接");
-            check.setEnabled(net.health().online&&!transfer&&pendingMode<0&&state.state!=ConnectionCheck.State.CANCELLING);
-            check.setSummary(!net.health().online?"请先连接 Wi-Fi 或移动网络":transfer?"当前传输结束后可重新检测":"重新验证云盘线路和文件服务");
             boolean connected=DriveSession.INSTANCE.connected(),revoking=GoogleAuthorization.revoking.get();
-            account.setSummary(connected?(DriveSession.INSTANCE.writable()?"已授权 · 可以管理文件":"已授权 · 只读访问"):
-                GoogleAuthorization.memory(requireContext()).remembered()?"已记住连接，等待恢复":"尚未连接");
+            account.setSummary(dev.gdirect.lite.ui.ConnectionText.account(connected,DriveSession.INSTANCE.writable(),
+                GoogleAuthorization.memory(requireContext()).state(),revoking));
             connectAccount.setVisible(!connected);manageAccount.setVisible(connected&&!DriveSession.INSTANCE.writable());
             disconnectAccount.setVisible(connected||GoogleAuthorization.memory(requireContext()).remembered());revokeAccount.setVisible(connected);
             connectAccount.setEnabled(!revoking);manageAccount.setEnabled(!revoking);disconnectAccount.setEnabled(!revoking);revokeAccount.setEnabled(!revoking);

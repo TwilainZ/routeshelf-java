@@ -1,5 +1,7 @@
 package dev.gdirect.lite;
 
+import dev.gdirect.lite.ui.AppScreens;
+
 import dev.gdirect.lite.network.DirectNet;
 
 import android.Manifest;
@@ -49,7 +51,7 @@ public final class MainActivity extends AppCompatActivity {
         toolbar.setNavigationOnClickListener(v->finish());
         toolbar.getMenu().add(0,1,0,R.string.settings_title);
         toolbar.getMenu().add(0,2,1,R.string.connection_status_title);
-        toolbar.setOnMenuItemClickListener(item->{startActivity(new Intent(this,item.getItemId()==1?SettingsActivity.class:ConnectionActivity.class));return true;});
+        toolbar.setOnMenuItemClickListener(item->{startActivity(AppScreens.intent(this,item.getItemId()==1?SettingsActivity.class:ConnectionActivity.class));return true;});
         View content=findViewById(R.id.transfers_content);
         int side=Math.round((24+Math.max(0,(getResources().getConfiguration().screenWidthDp-600)/2))*getResources().getDisplayMetrics().density);
         content.setPadding(side,content.getPaddingTop(),side,content.getPaddingBottom());
@@ -66,7 +68,7 @@ public final class MainActivity extends AppCompatActivity {
         advanced.setOnClickListener(v->{boolean expanded=manualPanel.getVisibility()!=View.VISIBLE;manualPanel.setVisibility(expanded?View.VISIBLE:View.GONE);
             advanced.setText(expanded?"收起高级选项":getString(R.string.ui_advanced));if(!expanded)ipInput.setText("");});
         start.setOnClickListener(v->beginDownload());
-        viewTransfer.setOnClickListener(v->startActivity(new Intent(this,TransferActivity.class)));
+        viewTransfer.setOnClickListener(v->startActivity(AppScreens.intent(this,TransferActivity.class)));
         linkInput.setText(savedInstanceState==null?getPreferences(MODE_PRIVATE).getString("link",""):savedInstanceState.getString("link_draft",""));
         if(savedInstanceState!=null&&savedInstanceState.getBoolean("manual_expanded")) {
             manualPanel.setVisibility(View.VISIBLE);advanced.setText("收起高级选项");ipInput.setText(savedInstanceState.getString("manual_ip",""));
@@ -84,9 +86,9 @@ public final class MainActivity extends AppCompatActivity {
     private void showRequestedSection(Intent intent) {
         if(intent==null)return;
         if(intent.getBooleanExtra(EXTRA_SETTINGS,false)) {
-            startActivity(new Intent(this,SettingsActivity.class));intent.removeExtra(EXTRA_SETTINGS);
+            startActivity(AppScreens.intent(this,SettingsActivity.class));intent.removeExtra(EXTRA_SETTINGS);
         }else if(intent.getBooleanExtra(EXTRA_TRANSFER,false)) {
-            intent.removeExtra(EXTRA_TRANSFER);startActivity(new Intent(this,TransferActivity.class));
+            intent.removeExtra(EXTRA_TRANSFER);startActivity(AppScreens.intent(this,TransferActivity.class));
         }
     }
     @Override protected void onSaveInstanceState(Bundle state) {
@@ -126,7 +128,7 @@ public final class MainActivity extends AppCompatActivity {
         intent.putExtra(DownloadService.EXTRA_URL, link);
         intent.putExtra(DownloadService.EXTRA_IP, ip);
         intent.putExtra(DownloadService.EXTRA_THREADS, workers);
-        try { startForegroundService(intent);startActivity(new Intent(this,TransferActivity.class)); }
+        try { startForegroundService(intent);startActivity(AppScreens.intent(this,TransferActivity.class)); }
         catch (Exception ex) { com.google.android.material.snackbar.Snackbar.make(findViewById(R.id.transfers_root),"无法启动下载服务，请重试。",com.google.android.material.snackbar.Snackbar.LENGTH_LONG).show(); }
     }
     private void showSnapshot() {

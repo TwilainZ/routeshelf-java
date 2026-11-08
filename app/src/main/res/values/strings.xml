@@ -75,13 +75,12 @@
     <string name="drive_upload">上传文件到当前文件夹</string>
     <string name="drive_upload_started">上传已启动，可在传输进度页查看或取消，完成后刷新文件列表。</string>
     <string name="drive_upload_failed">无法启动上传。请确认文件可读取、文件管理授权仍有效，再重试。</string>
-    <string name="drive_file_actions">文件操作</string>
     <string name="drive_new_folder">新建文件夹</string>
     <string name="drive_rename">重命名</string>
     <string name="drive_name">名称</string>
     <string name="drive_save">保存</string>
     <string name="drive_transfer_progress">%1$d%% · %2$s / %3$s</string>
-    <string name="drive_transfer_details">查看传输与已下载文件</string>
+    <string name="drive_transfer_details">传输详情</string>
     <string name="drive_cancel_transfer">取消当前传输</string>
     <string name="drive_cancel_failed">无法停止传输，请打开传输页面重试。</string>
     <string name="drive_retry_list">重新加载列表</string>

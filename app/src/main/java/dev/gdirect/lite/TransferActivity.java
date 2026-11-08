@@ -1,5 +1,7 @@
 package dev.gdirect.lite;
 
+import dev.gdirect.lite.ui.AppScreens;
+
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
@@ -44,14 +46,15 @@ public final class TransferActivity extends AppCompatActivity {
             try{startService(new Intent(this,DownloadService.class).setAction(DownloadService.ACTION_STOP));}
             catch(RuntimeException error){Snackbar.make(root,R.string.drive_cancel_failed,Snackbar.LENGTH_LONG).show();}
         });
-        emptyAction.setOnClickListener(v->openPublicDownload());logs.setOnClickListener(v->startActivity(new Intent(this,LogActivity.class)));
+        emptyAction.setOnClickListener(v->openPublicDownload());logs.setOnClickListener(v->startActivity(AppScreens.intent(this,LogActivity.class)));
         render();
     }
-    private void openPublicDownload(){startActivity(new Intent(this,MainActivity.class));}
+    private void openPublicDownload(){startActivity(AppScreens.intent(this,MainActivity.class));}
     private void render(){
         DownloadService.Snapshot s=DownloadService.snapshot;
         if(last==s)return;last=s;
         boolean idle=s==DownloadService.IDLE;
+        ((MaterialToolbar)findViewById(R.id.transfer_detail_toolbar)).getMenu().findItem(1).setVisible(!idle);
         heading.setText(idle?R.string.ui_transfer_empty:s.active?R.string.ui_current_transfer:R.string.ui_last_transfer);
         // Don't announce every byte counter update through the live region.
         CharSequence message=idle?getString(R.string.ui_transfer_empty_help):s.text;

@@ -30,8 +30,8 @@ def command(*parts):
 badging = command(args.aapt2, 'dump', 'badging', str(args.apk))
 package = re.search(r"package: name='([^']+)' versionCode='([^']+)' versionName='([^']+)'", badging)
 expected_package = 'dev.gdirect.lite.probe' if args.probe else ('dev.gdirect.lite.preview' if args.preview else 'dev.gdirect.lite')
-expected_version = '0.2.1-diagnostic-probe' if args.probe else '0.8.3-material-preview'
-expected_code = '3' if args.probe else '18'
+expected_version = '0.2.1-diagnostic-probe' if args.probe else '0.8.4-navigation-preview'
+expected_code = '3' if args.probe else '19'
 if not package or package.groups() != (expected_package, expected_code, expected_version):
     raise SystemExit('APK package or diagnostic version does not match the expected build')
 if args.probe and re.search(r"uses-permission(?:-sdk-\d+)?: name='android.permission.INTERNET'", badging):
@@ -63,7 +63,7 @@ with zipfile.ZipFile(args.apk) as apk:
     if not args.probe:
         required_code += ['Ldev/gdirect/lite/SettingsActivity;', 'Ldev/gdirect/lite/SettingsActivity$Preferences;',
                           'Landroidx/preference/PreferenceFragmentCompat;', 'Ldev/gdirect/lite/network/RouteProbeQueue;',
-                          'Ldev/gdirect/lite/network/NetworkPathTracker;', 'Ldev/gdirect/lite/auth/RememberedAuthorization;', 'Ldev/gdirect/lite/ConnectionActivity;', 'Ldev/gdirect/lite/TransferActivity;', 'Ldev/gdirect/lite/ui/TransferText;',
+                          'Ldev/gdirect/lite/network/NetworkPathTracker;', 'Ldev/gdirect/lite/auth/RememberedAuthorization;', 'Ldev/gdirect/lite/ConnectionActivity;', 'Ldev/gdirect/lite/TransferActivity;', 'Ldev/gdirect/lite/ui/TransferText;', 'Ldev/gdirect/lite/ui/AppScreens;', 'Ldev/gdirect/lite/ui/FileMenu;',
                           'Ldev/gdirect/lite/network/ConnectionHealth;', 'Ldev/gdirect/lite/ui/ConnectionText;', 'Ldev/gdirect/lite/ui/NavigationSelection;', 'Ldev/gdirect/lite/network/ConnectionCheck;',
                           'Ldev/gdirect/lite/LogActivity;', 'Ldev/gdirect/lite/diagnostics/DiagnosticLog;', 'Ldev/gdirect/lite/diagnostics/DiagnosticLogStore;']
     if args.probe:

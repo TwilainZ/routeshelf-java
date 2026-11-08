@@ -10,6 +10,7 @@
 | 连接慢/失败的日志记录、复制与导出 | [日志与反馈](DIAGNOSTICS.md) |
 | Google 根证书来源、指纹和许可 | [信任根](TRUST_ROOTS.md) |
 | 设备/账号/网络验收 | [验收清单](ACCEPTANCE.md) · [交付门槛](RELEASE_GATE.md) |
+| 菜单层级、返回与本轮交互审查 | [流程审查](UI_FLOW_REVIEW.md) |
 | 产品与 UI | [产品约束](../PRODUCT.md) · [设计规则](../DESIGN.md) · [UI 检查](UI_NOTES.md) |
 | 代码归属与第三方许可 | [归属审查](LICENSING.md) · [依赖声明](../THIRD_PARTY_NOTICES.md) |
 | 贡献与安全问题 | [贡献](../CONTRIBUTING.md) · [安全](../SECURITY.md) |
