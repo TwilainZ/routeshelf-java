@@ -1,7 +1,6 @@
 # Third-party notices
 
-The application's own source is Apache-2.0. Dependencies retain the terms below;
-the project license does not relicense Google SDK components or imply endorsement.
+Project-owned source is GPL-3.0-only. Dependencies retain the terms below.
 This offline inspector does not include the Google authorization SDK or request Google authorization.
 
 This inventory is generated from Gradle's resolved `debugRuntimeClasspath` and
@@ -82,6 +81,5 @@ Hamcrest Core 1.3 (BSD-3-Clause), and Vaadin's Android JSON port
 4.12.0 (Apache-2.0). No implementation from mizorewww/gdirect or its
 aria2 patches is included. The historical ZIP in docs/history/prototype/ retains its GPL license.
 
-Bundled component license/copyright/notice texts and the Apache-2.0 license are
-preserved in `tools/legacy-inspector/src/main/assets/third-party-notices.txt` inside the APK.
+The inspector APK includes the GPL-3.0 license and third-party notices.
 This module has no Google authorization or download implementation.

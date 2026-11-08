@@ -1,0 +1,14 @@
+Additional permission under section 7 of GNU GPL version 3
+
+For copyrightable material they license under GNU GPL version 3 in
+GDirect Lite, its copyright holders permit the Android application to
+link or combine with the unmodified Google Play services client
+libraries from the com.google.android.gms group in Google's Maven
+repository, and permit conveyance of the resulting combination.
+
+The Google libraries remain subject to their own terms. This permission
+does not grant rights in Google's code. The Corresponding Source for
+GDirect Lite and any modifications to its GPL-covered code must still
+be provided as required by the GPL. The source of the Google libraries
+covered by this permission need not be included on account of that
+combination.

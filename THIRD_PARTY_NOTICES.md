@@ -1,7 +1,6 @@
 # Third-party notices
 
-The application's own source is Apache-2.0. Dependencies retain the terms below;
-the project license does not relicense Google SDK components or imply endorsement.
+Project-owned source is GPL-3.0-only. Dependencies retain the terms below.
 Google authorization requires Google Play services on the device.
 
 This inventory is generated from Gradle's resolved `debugRuntimeClasspath` and
@@ -102,10 +101,9 @@ Hamcrest Core 1.3 (BSD-3-Clause), and Vaadin's Android JSON port
 4.12.0 (Apache-2.0). No implementation from mizorewww/gdirect or its
 aria2 patches is included. The historical ZIP in docs/history/prototype/ retains its GPL license.
 
-Bundled component license/copyright/notice texts and the Apache-2.0 license are
-preserved in `app/src/main/assets/third-party-notices.txt`, accessible from the
-Drive screen's “许可证与第三方声明” menu. The Google SDK terms linked above apply
-to the Google components in the inventory.
+The APK includes the GPL-3.0 license, the Android linking permission, and
+third-party notices. View them in Settings under “许可证与第三方声明”.
+The Google SDK terms apply to the Google components listed above.
 
 Public GTS Root R1–R4 certificates: Mozilla NSS root collection subset (MPL-2.0).
 See docs/TRUST_ROOTS.md and app/src/main/resources/gts-roots.LICENSE; no CA private keys are included.

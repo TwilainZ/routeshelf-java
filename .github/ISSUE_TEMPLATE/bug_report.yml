@@ -4,12 +4,12 @@ title: "[问题] "
 body:
   - type: markdown
     attributes:
-      value: "请勿上传令牌、密码、私钥、私人链接或完整上传会话 URL。安全漏洞请先阅读 SECURITY.md。"
+      value: "请勿上传令牌、密码、私钥、私人链接或完整上传会话 URL。安全漏洞请参阅 [安全报告](https://github.com/qingzhuernest/routeshelf-java/blob/main/SECURITY.md)。"
   - type: input
     id: build
     attributes:
       label: 应用版本与构建
-      description: 可在应用诊断中查看；不要只填写 APK 文件名。
+      description: 可在应用诊断中查看；如有构建清单，请同时提供提交号。
     validations:
       required: true
   - type: input

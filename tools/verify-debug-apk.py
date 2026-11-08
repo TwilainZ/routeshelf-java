@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -48,6 +49,12 @@ for resource in required_resources:
     if resource not in resources:
         raise SystemExit('Missing diagnostic resource: ' + resource)
 with zipfile.ZipFile(args.apk) as apk:
+    root = Path(__file__).resolve().parents[1]
+    notices = apk.read('assets/third-party-notices.txt')
+    if (root / 'LICENSE').read_bytes() not in notices:
+        raise SystemExit('The APK is missing the project license')
+    if not args.probe and (root / 'LICENSES/Google-Play-Services-exception.txt').read_bytes() not in notices:
+        raise SystemExit('The APK is missing the Android linking permission')
     if not args.probe:
         bootstrap_source = Path(__file__).resolve().parents[1] / 'app/src/main/resources/google-bootstrap.json'
         if apk.read('google-bootstrap.json') != bootstrap_source.read_bytes():
@@ -114,6 +121,10 @@ identity = dict(package=package[1], versionCode=int(package[2]), versionName=pac
                 revision=args.revision, run=args.run, filename=filename,
                 signingMode=args.signing_mode, certificateSha1=sha1, apkSha256=sha256,
                 oldCancellationMessagePresent=False)
+if re.fullmatch(r'[0-9a-f]{40}', args.revision):
+    server = os.environ.get('GITHUB_SERVER_URL', 'https://github.com')
+    repository = os.environ.get('GITHUB_REPOSITORY', 'qingzhuernest/routeshelf-java')
+    identity['sourceURL'] = f'{server}/{repository}/tree/{args.revision}'
 if args.probe:
     identity.update(offlinePackageInspector=True, internetPermission=False, targetPackage='dev.gdirect.lite')
 if args.preview:

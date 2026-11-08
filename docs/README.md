@@ -1,19 +1,13 @@
-# 文档导航
+# 项目文档
 
-| 目的 | 文档 |
+| 我想了解 | 从这里开始 |
 | --- | --- |
-| Swift 核心、macOS 源码、构建与交付边界 | [Apple 工程](../apple/README.md) |
-| 功能、版本与主要限制 | [项目首页](../README.md) · [更新记录](../CHANGELOG.md) |
-| 核心职责、调用链和源码入口 | [关键代码导航](ARCHITECTURE.md) |
-| 本地构建、测试、CI、签名与目录 | [开发环境](DEVELOPMENT.md) |
-| Google 一次性配置与授权排障 | [Google 设置](GOOGLE_SETUP.md) |
-| 自动连接、TLS 身份、中转与凭据边界 | [连接设计](DIRECT_NETWORK.md) |
-| 连接慢/失败的日志记录、复制与导出 | [日志与反馈](DIAGNOSTICS.md) |
-| Google 根证书来源、指纹和许可 | [信任根](TRUST_ROOTS.md) |
-| 设备/账号/网络验收 | [验收清单](ACCEPTANCE.md) · [交付门槛](RELEASE_GATE.md) |
-| 菜单层级、返回与本轮交互审查 | [流程审查](UI_FLOW_REVIEW.md) |
-| 产品与 UI | [产品约束](../PRODUCT.md) · [设计规则](../DESIGN.md) · [UI 检查](UI_NOTES.md) |
-| 代码归属与第三方许可 | [归属审查](LICENSING.md) · [依赖声明](../THIRD_PARTY_NOTICES.md) |
-| 贡献与安全问题 | [贡献](../CONTRIBUTING.md) · [安全](../SECURITY.md) |
+| 安装、更新与登录 | [安装指南](INSTALL.md) · [Android Google 授权](GOOGLE_SETUP.md) |
+| 本地构建与交付 | [Android 开发](DEVELOPMENT.md) · [工具入口](../tools/README.md) · [交付检查](RELEASE_GATE.md) |
+| 项目结构与行为 | [源码导航](ARCHITECTURE.md) · [产品范围](PRODUCT.md) · [数据连接](DIRECT_NETWORK.md) |
+| 界面与设备验收 | [Android 设计](design/ANDROID.md) · [验收清单](ACCEPTANCE.md) · [Android UI 检查](UI_NOTES.md) |
+| 排障和反馈 | [连接日志](DIAGNOSTICS.md) · [贡献指南](../CONTRIBUTING.md) · [安全问题](../SECURITY.md) |
+| 源码许可与来源 | [许可证与归属](LICENSING.md) · [第三方声明](../THIRD_PARTY_NOTICES.md) · [Google 根证书](TRUST_ROOTS.md) · [图标来源](design/README.md) |
+| 查看旧版本 | [更新记录](../CHANGELOG.md) · [历史文档](history/) |
 
-`history/` 只保存历史审查证据，不代表当前功能或配置。源码 ZIP 在 docs/history/prototype/，不参与构建。当前版本以 app/build.gradle 为准；真实设备完成情况以验收记录为准。
+Android 版本以 `app/build.gradle` 为准。`history/` 保存原型和旧阶段记录，供查阅当时的实现、验证与许可。

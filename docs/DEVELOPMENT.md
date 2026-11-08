@@ -10,7 +10,7 @@ Android Studio 打开仓库根目录，安装上述 SDK；或命令行配置 `AN
 bash tools/check.sh
 ```
 
-这会执行 11 项独立 Java 检查、debug/preview JVM 测试、主 debug APK 构建、两变体 Lint，以及离线检查器构建/Lint。不需要预览私钥，不发布 APK，不改变 Google Cloud。测试报告在 app/build/reports/。当前 0.7.5 各变体 182 项 JVM 测试；测试数量会随开发变化。
+这会执行 11 项独立 Java 检查、debug/preview JVM 测试、主 debug APK 构建、两变体 Lint，以及离线检查器构建/Lint。不需要预览私钥，不发布 APK，不改变 Google Cloud。测试报告在 app/build/reports/。当前平台验收结果见 [设备与网络验收](ACCEPTANCE.md)。
 
 ## 源码目录
 
@@ -37,7 +37,7 @@ bash tools/build-preview-apk.sh
 
 打包器拒绝缺失/错误密钥，核对实际包名、版本、提交、签名和 GTS 根包，输出至 app/build/outputs/verified-preview/提交/。不要生成替代私钥来覆盖用户已有测试版。主包 dev.gdirect.lite 的旧签名是另一套身份，不能混用。现有维护者已报告完成 Google 配置，同一预览身份更新无需再登记客户端。
 
-私钥不能提交、放入 ZIP、贴在 Issue 或聊天中。云环境当前保留了原密钥；外部备份和 CI Secret 尚未确认，不能宣称长期备份已完成。
+签名私钥应存于仓库外的安全位置。向用户分发预览时，在下载位置提供对应源码及许可，见 [发布前检查](RELEASE_GATE.md)。
 
 ## CI 与依赖
 

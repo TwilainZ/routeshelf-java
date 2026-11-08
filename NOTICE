@@ -1,9 +1,11 @@
-GDirect Lite Android
-An independently implemented Android Google Drive client.
+GDirect Lite
+Copyright (C) 2026 the GDirect Lite contributors.
 
-The application's own source is licensed under Apache License 2.0.
-Third-party components retain their own licenses and notices.
-See THIRD_PARTY_NOTICES.md and the notices bundled in the APK.
+Project-owned source and artwork are licensed under GNU GPL version 3 only.
+The Android build uses the additional permission in
+LICENSES/Google-Play-Services-exception.txt.
 
-The historical v0.1.0 ZIP in docs/history/prototype/ retains the license distributed inside it.
-Google and the author of mizorewww/gdirect do not endorse this application.
+Third-party components retain their licenses and notices.
+See THIRD_PARTY_NOTICES.md and the notices bundled with each application.
+The historical prototype archive retains its original GPL-2.0-or-later terms.
+GDirect Lite is an independent project and is not endorsed by Google.

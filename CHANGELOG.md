@@ -1,5 +1,11 @@
 # 更新记录
 
+## 仓库与许可
+
+- 仓库更名为 RouteShelf Java，现行分支集中维护 Android 客户端。
+- 重整首页、安装与贡献指南，将 Android 设计、产品范围和旧版本资料归入文档目录。
+- 当前项目自有源码改用 GPL-3.0-only。历史版本的授权、第三方组件条款和 Android 的 Google Play 服务链接例外见 [许可证与归属](docs/LICENSING.md)。
+
 ## 0.8.4-navigation-preview（versionCode 19）
 
 - 主菜单按浏览/传输/设置分组；连接状态使用顶部入口或设置，检测集中在连接页。首页不重复提供文件范围选择。

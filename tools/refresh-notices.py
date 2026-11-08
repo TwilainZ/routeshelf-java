@@ -72,8 +72,7 @@ for group, artifact, version in sorted(coordinates):
                     bundled.append(f"===== {module} / {label} / {name} =====\n{text}\n")
 header = """# Third-party notices
 
-The application's own source is Apache-2.0. Dependencies retain the terms below;
-the project license does not relicense Google SDK components or imply endorsement.
+Project-owned source is GPL-3.0-only. Dependencies retain the terms below.
 Google authorization requires Google Play services on the device.
 
 This inventory is generated from Gradle's resolved `debugRuntimeClasspath` and
@@ -97,16 +96,14 @@ Hamcrest Core 1.3 (BSD-3-Clause), and Vaadin's Android JSON port
 4.12.0 (Apache-2.0). No implementation from mizorewww/gdirect or its
 aria2 patches is included. The historical ZIP in docs/history/prototype/ retains its GPL license.
 
-Bundled component license/copyright/notice texts and the Apache-2.0 license are
-preserved in `app/src/main/assets/third-party-notices.txt`, accessible from the
-Drive screen's “许可证与第三方声明” menu. The Google SDK terms linked above apply
-to the Google components in the inventory.
+The APK includes the GPL-3.0 license, the Android linking permission, and
+third-party notices. View them in Settings under “许可证与第三方声明”.
+The Google SDK terms apply to the Google components listed above.
 """
 if args.module == 'inspector':
     footer = footer.replace('Test-only dependencies (not shipped in the APK):',
                             "The main application's test-only dependencies (not shipped in this APK):")
-    footer = footer.split('Bundled component license/copyright/notice texts')[0] + """Bundled component license/copyright/notice texts and the Apache-2.0 license are
-preserved in `tools/legacy-inspector/src/main/assets/third-party-notices.txt` inside the APK.
+    footer = footer.split('The APK includes the GPL-3.0 license')[0] + """The inspector APK includes the GPL-3.0 license and third-party notices.
 This module has no Google authorization or download implementation.
 """
 if args.module == 'app':
@@ -118,6 +115,11 @@ notice_path.write_text(inventory)
 module_dir = root / ('tools/legacy-inspector' if args.module == 'inspector' else 'app')
 asset = module_dir / "src/main/assets/third-party-notices.txt"
 asset.parent.mkdir(parents=True, exist_ok=True)
+license_texts = [(root / "LICENSE").read_text()]
+if args.module == 'app':
+    license_texts.append((root / "LICENSES/Google-Play-Services-exception.txt").read_text())
+license_texts.append((root / "LICENSES/Apache-2.0.txt").read_text())
 asset.write_text(inventory + "\n\n" + (root / "NOTICE").read_text()
-                 + "\n\n" + (root / "LICENSE").read_text() + "\n\n" + "\n".join(bundled).rstrip() + "\n")
+                 + "\n\n" + "\n\n".join(license_texts)
+                 + "\n\n" + "\n".join(bundled).rstrip() + "\n")
 print(f"Recorded {len(coordinates)} runtime graph nodes and {len(bundled)} distinct bundled notices.")

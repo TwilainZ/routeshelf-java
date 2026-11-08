@@ -1,6 +1,6 @@
 # UI 实现与检查
 
-当前版本 0.8.4 的布局与组件约束见 [DESIGN.md](../DESIGN.md)，菜单/权限/返回规则及修复记录见 [流程审查](UI_FLOW_REVIEW.md)。历史版本保留在 Git 中；早期记录见 [0.4.0 历史记录](history/UI_0_4.md)。
+当前版本 0.8.4 的布局与组件约束见 [Android 设计](design/ANDROID.md)，菜单/权限/返回规则及修复记录见 [流程审查](UI_FLOW_REVIEW.md)。历史版本保留在 Git 中；早期记录见 [0.4.0 历史记录](history/UI_0_4.md)。
 
 主界面使用官方 Material 搜索、底部首页/文件、新建、文件更多菜单；设置使用 AndroidX Preference 和 Material 对话框。连接、公开链接下载和任务详情是职责独立的页面，共用主题与页面复用规则。账户摘要复用 ConnectionText；连接状态独立观察授权、API、内容和真实任务结果。
 
