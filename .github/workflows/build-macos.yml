@@ -19,7 +19,9 @@ jobs:
           xcodebuild -version
           swift --version
       - name: Core tests and real Apple loopback TLS tests
-        run: bash apple/tools/check.sh
+        run: |
+          echo '::add-matcher::apple/tools/swift-matcher.json'
+          bash apple/tools/check.sh
       - name: Package and verify universal Mac application, ZIP and DMG
         run: bash apple/tools/package-macos.sh
       - uses: actions/upload-artifact@v5
