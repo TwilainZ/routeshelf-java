@@ -14,6 +14,7 @@ import dev.gdirect.lite.network.GoogleHttp;
 import dev.gdirect.lite.network.GoogleRangeCatalog;
 import dev.gdirect.lite.network.GoogleTrust;
 import dev.gdirect.lite.network.NetworkPathTracker;
+import dev.gdirect.lite.network.ConnectionHealth;
 
 import android.app.Application;
 import android.content.SharedPreferences;
@@ -48,7 +49,9 @@ public final class GoogleNetwork extends Application {
     private DirectRoutes routes;
     private final Object policyLock=new Object();
     private long networkEpoch;
+    private final ConnectionHealth health=new ConnectionHealth();
     private ConnectivityManager connectivity;
+    private volatile boolean vpnActive;
     private final NetworkPathTracker networkPaths=new NetworkPathTracker();
     private final ConnectionCheck check=new ConnectionCheck();
     private GoogleRangeCatalog catalog;
@@ -184,7 +187,9 @@ public final class GoogleNetwork extends Application {
         Network active=connectivity.getActiveNetwork();
         android.net.NetworkCapabilities capabilities=active==null?null:connectivity.getNetworkCapabilities(active);
         synchronized(policyLock){
-            if(!networkPaths.update(active==null?0:active.getNetworkHandle(),capabilities!=null&&capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN)))return;
+            vpnActive=capabilities!=null&&capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN);
+            health.online(active!=null);
+            if(!networkPaths.update(active==null?0:active.getNetworkHandle(),vpnActive))return;
             DiagnosticLog.get().event(active==null?DiagnosticLog.Event.NETWORK_LOST:DiagnosticLog.Event.NETWORK_CHANGED);
             check.cancel();check.clearResult();reset();
             summary=active==null?"网络已断开，恢复后将重新检测":"网络路径已改变，下次请求将重新验证线路";
@@ -192,6 +197,17 @@ public final class GoogleNetwork extends Application {
     }
     public static GoogleNetwork get() { return instance; }
     public String summary() { return systemNetwork() ? "系统网络：遵循设备的 DNS 和代理设置" : summary; }
+    ConnectionHealth.Snapshot health(){refreshNetworkPath();return health.snapshot();}
+    boolean vpnActive(){return vpnActive;}
+    long healthGeneration(){return health.generation();}
+    void downloadVerified(long generation){health.downloaded(generation);}
+    private ConnectionHealth.Problem problem(Throwable error){
+        switch(DiagnosticLog.failure(error)){
+            case CERTIFICATE:return ConnectionHealth.Problem.CERTIFICATE;
+            case TIMEOUT:return ConnectionHealth.Problem.TIMEOUT;
+            default:return ConnectionHealth.Problem.NETWORK;
+        }
+    }
     boolean systemNetwork() { return preferences.getBoolean("system-network", false); }
     boolean relayEnabled(){return preferences.getBoolean("allow-known-relay",false);}
     int connectionMode(){return systemNetwork()?2:relayEnabled()?1:0;}
@@ -217,7 +233,7 @@ public final class GoogleNetwork extends Application {
     }
     void reset() {
         synchronized(policyLock) {
-            DiagnosticLog.get().event(DiagnosticLog.Event.ROUTES_RESET);networkEpoch++;routes.reset();directClients.clear();if(catalog!=null)catalog.retryRefresh();
+            DiagnosticLog.get().event(DiagnosticLog.Event.ROUTES_RESET);networkEpoch++;health.reset();routes.reset();directClients.clear();if(catalog!=null)catalog.retryRefresh();
         }
     }
 
@@ -314,12 +330,15 @@ public final class GoogleNetwork extends Application {
         if(!routeAddress(route.ip))throw new IOException("未允许此连接端点");
         OkHttpClient client = GoogleHttp.direct(base, route).newBuilder()
             .connectTimeout(3, TimeUnit.SECONDS).readTimeout(3,TimeUnit.SECONDS).callTimeout(5,TimeUnit.SECONDS).build();
-        boolean api = route.host.equals("www.googleapis.com");
-        URL target = new URL("https://" + route.host + (api ? "/drive/v3/about?fields=user" : "/"));
+        probeService(client,route.host,route);
+    }
+    private void probeService(OkHttpClient client,String host,DirectRoutes.Route route)throws IOException {
+        boolean api = host.equals("www.googleapis.com");
+        URL target = new URL("https://" + host + (api ? "/drive/v3/about?fields=user" : "/"));
         // No credentials or private file identifiers are used for discovery.
         long probeStart=System.nanoTime();
         try (Response response = client.newCall(new Request.Builder().url(target).get().build()).execute()) {
-            DiagnosticLog.get().record(DiagnosticLog.Event.PROBE_HTTP,0,route.host,route.ip,route.tls,DiagnosticLog.elapsed(probeStart),response.code(),null);
+            DiagnosticLog.get().record(DiagnosticLog.Event.PROBE_HTTP,0,host,route==null?null:route.ip,route==null?null:route.tls,DiagnosticLog.elapsed(probeStart),response.code(),null);
             if (api) {
                 if (response.code() != 401) throw new IOException("Drive API 探测返回 HTTP "+response.code()+"，预期未授权响应 401");
                 try {
@@ -327,7 +346,7 @@ public final class GoogleNetwork extends Application {
                         throw new IOException("Invalid API probe payload");
                 } catch (org.json.JSONException error) { throw new IOException("Invalid API probe payload"); }
             } else if (response.code() < 200 || response.code() >= 500) {
-                throw new IOException(route.host+" 探测返回 HTTP "+response.code());
+                throw new IOException(host+" 探测返回 HTTP "+response.code());
             }
         }
     }
@@ -342,7 +361,19 @@ public final class GoogleNetwork extends Application {
         refreshNetworkPath();
         final long epoch;
         final boolean system;
-        synchronized(policyLock){epoch=networkEpoch;system=systemNetwork();}
+        final long healthEpoch;
+        synchronized(policyLock){epoch=networkEpoch;healthEpoch=health.generation();system=systemNetwork();}
+        DirectRoutes.Route[] selected = new DirectRoutes.Route[1];
+        GoogleHttp.Status status=new GoogleHttp.Status(){
+            private ConnectionHealth.Ticket ticket;
+            public void started(){ticket=health.begin(ConnectionHealth.service(url.getHost()),healthEpoch);}
+            public void response(int code){health.route(ticket,selected[0]);health.response(ticket,code);}
+            public void failed(Throwable error){
+                if(DiagnosticLog.failure(error)==DiagnosticLog.Failure.AUTHORIZATION)health.cancelled(ticket);
+                else health.failed(ticket,problem(error));
+            }
+            public void cancelled(){health.cancelled(ticket);}
+        };
         GoogleHttp.Guard current=()->{
             guard.check();
             refreshNetworkPath();
@@ -356,12 +387,12 @@ public final class GoogleNetwork extends Application {
             prepareSpace();
             if(!addressSpace.contains(manualIp))throw new IOException("该地址不属于当前 Google 前端范围");
             DirectRoutes.Route route = new DirectRoutes.Route(url.getHost(),manualIp,DirectRoutes.TlsMode.NORMAL,0);
+            selected[0]=route;
             OkHttpClient manual = GoogleHttp.direct(base,route);
-            return GoogleHttp.open(url, () -> manual, () -> { }, current);
+            return GoogleHttp.open(url, () -> manual, () -> { }, current,status);
         }
-        if (system) return GoogleHttp.open(url,()->base,()->{},current);
+        if (system) return GoogleHttp.open(url,()->base,()->{},current,status);
         Set<String> failed = new java.util.HashSet<>();
-        DirectRoutes.Route[] selected = new DirectRoutes.Route[1];
         return GoogleHttp.open(url, () -> {
             current.check();if(!relayEnabled())prepareSpace();
             selected[0] = routes.select(url.getHost(),failed);
@@ -370,11 +401,12 @@ public final class GoogleNetwork extends Application {
             synchronized(policyLock) {
                 if(epoch==networkEpoch&&selected[0]!=null){failed.add(selected[0].key());routes.reject(selected[0]);}
             }
-        }, current);
+        }, current,status);
     }
     ConnectionCheck.Snapshot connectionCheck(){return check.snapshot();}
     void startCheck() {
-        if(systemNetwork()||DownloadService.snapshot.active)return;
+        refreshNetworkPath();
+        if(DownloadService.snapshot.active||!health.snapshot().online)return;
         check.start(()->{
             long operation=DiagnosticLog.get().operation(),start=System.nanoTime();DiagnosticLog.get().record(DiagnosticLog.Event.CHECK_BEGIN,operation,null,null,null,0,0,null);
             try{reset();checkRoutes();DiagnosticLog.get().record(DiagnosticLog.Event.CHECK_OK,operation,null,null,null,DiagnosticLog.elapsed(start),0,null);return summary;}
@@ -384,12 +416,21 @@ public final class GoogleNetwork extends Application {
     void cancelCheck(){DiagnosticLog.get().event(DiagnosticLog.Event.CHECK_CANCEL);check.cancel();}
     void checkRoutes() throws IOException {
         if(Thread.currentThread().isInterrupted())throw new java.io.InterruptedIOException("检测已取消");
-        if(!relayEnabled())prepareSpace();
+        final long healthEpoch=health.generation();
+        boolean system=systemNetwork();
+        if(!system&&!relayEnabled())prepareSpace();
         List<String> results = new ArrayList<>();
         boolean failed = false;
         for (String host : new String[]{"www.googleapis.com","drive.usercontent.google.com"}) {
-            try { results.add(DirectRoutes.description(routes.select(host,Collections.emptySet()),false)); }
-            catch (IOException error) {
+            ConnectionHealth.Ticket ticket=health.begin(ConnectionHealth.service(host),healthEpoch);
+            try {
+                if(system){probeService(base.newBuilder().callTimeout(5,TimeUnit.SECONDS).build(),host,null);results.add(host+" · 系统网络验证通过");}
+                else{DirectRoutes.Route route=routes.select(host,Collections.emptySet());health.route(ticket,route);results.add(DirectRoutes.description(route,false));}
+                if(Thread.currentThread().isInterrupted())throw new java.io.InterruptedIOException();
+                health.verified(ticket,ConnectionHealth.Evidence.PROBE);
+            }
+            catch (IOException|RuntimeException error) {
+                if(Thread.currentThread().isInterrupted())health.cancelled(ticket);else health.failed(ticket,problem(error));
                 results.add(error.getMessage()); failed = true;
                 if (Thread.currentThread().isInterrupted()) break;
             }

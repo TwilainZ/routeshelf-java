@@ -10,6 +10,7 @@ import dev.gdirect.lite.drive.DriveListing;
 import dev.gdirect.lite.drive.DriveSession;
 import dev.gdirect.lite.drive.MutationCoordinator;
 import dev.gdirect.lite.preview.PreviewPolicy;
+import dev.gdirect.lite.ui.ConnectionText;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import android.content.Intent;
@@ -89,10 +90,18 @@ public final class DriveActivity extends AppCompatActivity {
     private RememberedAuthorization.State observedRestore=RememberedAuthorization.State.IDLE;
     private long observedMutation=MutationCoordinator.INSTANCE.revision();
     private int observedConnectionMode;
+    private MaterialButton connectionIndicator;
     private String uploadParent;
     private long uploadSession=-1;
     private final Runnable ticker = new Runnable() {
         @Override public void run() {
+            GoogleNetwork connectivity=GoogleNetwork.get();
+            String connectionText=ConnectionText.headline(connectivity.health(),DriveSession.INSTANCE.connected(),
+                !DriveSession.INSTANCE.connected()&&GoogleAuthorization.memory(DriveActivity.this).state()==RememberedAuthorization.State.RESTORING,
+                connectivity.connectionCheck().active());
+            if(connectivity.vpnActive())connectionText+=" · VPN 已开启";
+            if(!android.text.TextUtils.equals(connectionIndicator.getText(),connectionText))connectionIndicator.setText(connectionText);
+            connectionIndicator.setContentDescription(connectionText+"，查看连接状态");
             if(wasConnected&&!DriveSession.INSTANCE.connected())clearBrowser();
             if(!authorizing&&!GoogleAuthorization.revoking.get()){
                 RememberedAuthorization memory=GoogleAuthorization.memory(DriveActivity.this);
@@ -204,6 +213,8 @@ public final class DriveActivity extends AppCompatActivity {
         setContentView(container);container.requestApplyInsets();
         com.google.android.material.appbar.MaterialToolbar toolbar=new com.google.android.material.appbar.MaterialToolbar(this);
         toolbar.setTitle(R.string.app_name);container.addView(toolbar,new LinearLayout.LayoutParams(-1,-2));setSupportActionBar(toolbar);
+        connectionIndicator=(MaterialButton)getLayoutInflater().inflate(R.layout.view_connection_indicator,container,false);
+        connectionIndicator.setOnClickListener(v->startActivity(new Intent(this,ConnectionActivity.class)));container.addView(connectionIndicator);
         LinearLayout root=column();root.setPadding(0,0,dp(8),0);root.setFocusableInTouchMode(true);
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override public void handleOnBackPressed() {
@@ -876,6 +887,7 @@ public final class DriveActivity extends AppCompatActivity {
         menu.add(0,13,2,R.string.drive_public_download);
         menu.add(0,9,3,R.string.drive_transfer_details);
         menu.add(0,11,4,R.string.settings_title);
+        menu.add(0,14,5,R.string.connection_status_title);
         return true;
     }
     @Override public boolean onPrepareOptionsMenu(Menu menu) {
@@ -884,6 +896,7 @@ public final class DriveActivity extends AppCompatActivity {
         return super.onPrepareOptionsMenu(menu);
     }
     @Override public boolean onOptionsItemSelected(MenuItem item) {
+        if(item.getItemId()==14){startActivity(new Intent(this,ConnectionActivity.class));return true;}
         if(item.getItemId()==13){startActivity(new Intent(this,MainActivity.class));return true;}
         if (item.getItemId() == android.R.id.home) { if(!activeSearch.isEmpty())clearSearch();else goUp(); return true; }
         if(item.getItemId()==6){load(false);return true;}

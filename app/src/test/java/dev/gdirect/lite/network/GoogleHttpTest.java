@@ -31,6 +31,43 @@ import org.junit.Test;
 
 /** Real TLS over loopback with ephemeral fixture certificates; production trust is never disabled. */
 public final class GoogleHttpTest {
+    @Test public void liveResponseUpdatesConnectionStatusWithoutExposingHeadersOrUrls()throws Exception {
+        try(Fixture f=new Fixture(HOST)){
+            ConnectionHealth health=new ConnectionHealth();health.online(true);ConnectionHealth.Ticket[] ticket={null};
+            f.server.enqueue(new MockResponse().setResponseCode(403));
+            OkHttpClient client=f.client(DirectRoutes.TlsMode.NORMAL,true);
+            HttpsURLConnection c=GoogleHttp.open(f.url(),()->client,()->{},()->{},new GoogleHttp.Status(){
+                public void started(){ticket[0]=health.begin(ConnectionHealth.Service.API,health.generation());}
+                public void response(int code){health.response(ticket[0],code);}
+                public void failed(Throwable error){health.failed(ticket[0],ConnectionHealth.Problem.NETWORK);}
+            });
+            try{assertEquals(403,c.getResponseCode());assertEquals(ConnectionHealth.State.RESPONSE_ERROR,health.snapshot().api.state);assertEquals(ConnectionHealth.Problem.PERMISSION,health.snapshot().api.problem);}
+            finally{c.disconnect();}
+        }
+    }
+    @Test public void brokenStatusObserverCannotBreakARealTlsRequest()throws Exception {
+        try(Fixture f=new Fixture(HOST)){
+            f.server.enqueue(new MockResponse().setBody("ok"));OkHttpClient client=f.client(DirectRoutes.TlsMode.NORMAL,true);
+            HttpsURLConnection c=GoogleHttp.open(f.url(),()->client,()->{},()->{},new GoogleHttp.Status(){
+                public void started(){throw new IllegalStateException();}public void response(int code){throw new IllegalStateException();}
+            });
+            try{assertEquals("ok",new String(c.getInputStream().readAllBytes(),java.nio.charset.StandardCharsets.UTF_8));}finally{c.disconnect();}
+        }
+    }
+    @Test public void realBodyDisconnectChangesSuccessfulHeadersToFailedStatus()throws Exception {
+        try(Fixture f=new Fixture(HOST)){
+            ConnectionHealth health=new ConnectionHealth();health.online(true);ConnectionHealth.Ticket[] ticket={null};
+            f.server.enqueue(new MockResponse().setBody("x".repeat(65536)).setSocketPolicy(SocketPolicy.DISCONNECT_DURING_RESPONSE_BODY));
+            OkHttpClient client=f.client(DirectRoutes.TlsMode.NORMAL,true);
+            HttpsURLConnection c=GoogleHttp.open(f.url(),()->client,()->{},()->{},new GoogleHttp.Status(){
+                public void started(){ticket[0]=health.begin(ConnectionHealth.Service.DOWNLOAD,health.generation());}
+                public void response(int code){health.response(ticket[0],code);}
+                public void failed(Throwable error){health.failed(ticket[0],ConnectionHealth.Problem.NETWORK);}
+            });
+            try{assertEquals(200,c.getResponseCode());assertThrows(IOException.class,()->c.getInputStream().readAllBytes());assertEquals(ConnectionHealth.State.FAILED,health.snapshot().download.state);}
+            finally{c.disconnect();}
+        }
+    }
     @Test public void cachedRealSniFailureRecoversToFrontendIdentityAndDownloadsOverRealTls()throws Exception {
         try(Fixture f=new Fixture("g.cn")) {
             f.server.enqueue(new MockResponse().setResponseCode(401).setBody("{\"error\":{\"code\":401}}"));

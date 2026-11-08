@@ -31,6 +31,12 @@ import okhttp3.Response;
 public final class GoogleHttp {
     public interface Clients { OkHttpClient get() throws IOException; }
     public interface Guard { void check() throws IOException; }
+    public interface Status {
+        default void started(){}
+        default void response(int code){}
+        default void failed(Throwable error){}
+        default void cancelled(){}
+    }
     public static OkHttpClient direct(OkHttpClient trusted, DirectRoutes.Route route) throws IOException {
         InetAddress address = InetAddress.getByName(route.ip); // Route contains a validated literal, never DNS.
         OkHttpClient.Builder builder = trusted.newBuilder()
@@ -83,7 +89,10 @@ public final class GoogleHttp {
         return open(url,clients,failed, () -> { });
     }
     public static HttpsURLConnection open(URL url, Clients clients, Runnable failed, Guard guard) {
-        return new GetConnection(url, clients, failed,guard);
+        return open(url,clients,failed,guard,new Status(){});
+    }
+    public static HttpsURLConnection open(URL url,Clients clients,Runnable failed,Guard guard,Status status){
+        return new GetConnection(url,clients,failed,guard,status);
     }
     public static final class GetConnection extends HttpsURLConnection {
         private final long logOperation=DiagnosticLog.get().operation();
@@ -92,6 +101,8 @@ public final class GoogleHttp {
         private final Runnable failed;
         private final Request.Builder request;
         private final Guard guard;
+        private final Status status;
+        private final java.util.concurrent.atomic.AtomicBoolean statusStarted=new java.util.concurrent.atomic.AtomicBoolean();
         private final ByteArrayOutputStream payload=new ByteArrayOutputStream();
         private volatile Response response;
         private volatile Call call;
@@ -101,18 +112,24 @@ public final class GoogleHttp {
         public void onClose(Runnable hook){closedHook=hook;notifyClosed();}
         private void notifyClosed(){Runnable hook=closedHook;if(closed&&hook!=null&&hookCalled.compareAndSet(false,true))hook.run();}
         public GetConnection(URL url, Clients clients, Runnable failed, Guard guard) {
+            this(url,clients,failed,guard,new Status(){});
+        }
+        public GetConnection(URL url,Clients clients,Runnable failed,Guard guard,Status status){
             super(url); this.clients = clients; this.failed = failed;
-            this.guard = guard;
+            this.guard = guard;this.status=status;
             request = new Request.Builder().url(url);
             setConnectTimeout(10000); setReadTimeout(20000);
         }
         @Override public void connect() throws IOException {
             if(!closed&&response!=null)return;
+            if(statusStarted.compareAndSet(false,true))notifyStatus(status::started);
             requestStart=System.nanoTime();
             DiagnosticLog.get().record("GET".equals(method)?DiagnosticLog.Event.REQUEST_READ_BEGIN:DiagnosticLog.Event.REQUEST_WRITE_BEGIN,logOperation,url.getHost(),null,null,0,0,null);
-            try{connectInternal();DiagnosticLog.get().record(DiagnosticLog.Event.REQUEST_RESPONSE,logOperation,url.getHost(),null,null,DiagnosticLog.elapsed(requestStart),response.code(),null);}
-            catch(IOException|RuntimeException error){DiagnosticLog.get().record(closed||Thread.currentThread().isInterrupted()?DiagnosticLog.Event.REQUEST_CANCELLED:DiagnosticLog.Event.REQUEST_FAILED,logOperation,url.getHost(),null,null,DiagnosticLog.elapsed(requestStart),0,error);throw error;}
+            try{connectInternal();notifyStatus(()->status.response(response.code()));DiagnosticLog.get().record(DiagnosticLog.Event.REQUEST_RESPONSE,logOperation,url.getHost(),null,null,DiagnosticLog.elapsed(requestStart),response.code(),null);}
+            catch(IOException|RuntimeException error){reportStatus(error);DiagnosticLog.get().record(closed||Thread.currentThread().isInterrupted()?DiagnosticLog.Event.REQUEST_CANCELLED:DiagnosticLog.Event.REQUEST_FAILED,logOperation,url.getHost(),null,null,DiagnosticLog.elapsed(requestStart),0,error);throw error;}
         }
+        private void notifyStatus(Runnable callback){try{callback.run();}catch(RuntimeException ignored){}}
+        private void reportStatus(Throwable error){notifyStatus(closed||Thread.currentThread().isInterrupted()?status::cancelled:()->status.failed(error));}
         private void connectInternal()throws IOException {
             if (closed) throw new IOException("连接已关闭");
             if (response != null) return;
@@ -182,10 +199,10 @@ public final class GoogleHttp {
             if (response.code() >= 400) throw new IOException("HTTP " + response.code());
             return new java.io.FilterInputStream(response.body().byteStream()) {
                 @Override public int read() throws IOException {
-                    try { return in.read(); } catch (IOException error) { DiagnosticLog.get().record(DiagnosticLog.Event.BODY_FAILED,logOperation,url.getHost(),null,null,DiagnosticLog.elapsed(requestStart),0,error);failed.run(); throw error; }
+                    try { return in.read(); } catch (IOException error) { reportStatus(error);DiagnosticLog.get().record(DiagnosticLog.Event.BODY_FAILED,logOperation,url.getHost(),null,null,DiagnosticLog.elapsed(requestStart),0,error);failed.run(); throw error; }
                 }
                 @Override public int read(byte[] data,int offset,int count) throws IOException {
-                    try { return in.read(data,offset,count); } catch (IOException error) { DiagnosticLog.get().record(DiagnosticLog.Event.BODY_FAILED,logOperation,url.getHost(),null,null,DiagnosticLog.elapsed(requestStart),0,error);failed.run(); throw error; }
+                    try { return in.read(data,offset,count); } catch (IOException error) { reportStatus(error);DiagnosticLog.get().record(DiagnosticLog.Event.BODY_FAILED,logOperation,url.getHost(),null,null,DiagnosticLog.elapsed(requestStart),0,error);failed.run(); throw error; }
                 }
             };
         }

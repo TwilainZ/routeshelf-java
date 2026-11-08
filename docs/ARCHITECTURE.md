@@ -9,6 +9,7 @@ app/src/main/java/dev/gdirect/lite/
 ├── DriveActivity.java        私人文件浏览与操作界面
 ├── DownloadService.java      前台上传/下载编排
 ├── SettingsActivity.java     统一设置
+├── ConnectionActivity.java   账户/云盘/下载的实时连接状态
 ├── LogActivity.java          本机日志查看和导出
 ├── FilePreviewActivity.java  原生文件预览
 ├── network/                  选线、TLS/HTTP、地址范围、DNS、重试
@@ -16,13 +17,15 @@ app/src/main/java/dev/gdirect/lite/
 ├── auth/                     官方 Google 授权集成及回调解析
 ├── transfer/                 上传协议、范围/版本规则、完整性及线程关闭
 ├── diagnostics/              结构化日志、私有存储及安装诊断
-└── preview/                  预览格式与大小规则
+├── preview/                  预览格式与大小规则
+└── ui/                       各入口共用的状态文案
 ```
 
 ## 网络连接先看这几处
 
 | 职责 | 源码 |
 | --- | --- |
+| 实时连接证据、过期/切网失效与用户状态文案 | [ConnectionHealth](../app/src/main/java/dev/gdirect/lite/network/ConnectionHealth.java) · [ConnectionText](../app/src/main/java/dev/gdirect/lite/ui/ConnectionText.java) |
 | 重启恢复、账户/权限记忆、旧回调和主动断开 | [RememberedAuthorization](../app/src/main/java/dev/gdirect/lite/auth/RememberedAuthorization.java) · [GoogleAuthorization](../app/src/main/java/dev/gdirect/lite/auth/GoogleAuthorization.java) |
 | 默认模式、明确同意的中转、范围准备、切网代次与 HTTP 工厂 | [GoogleNetwork](../app/src/main/java/dev/gdirect/lite/GoogleNetwork.java) |
 | 缓存、优先中转、有界发现、三种 TLS 模式、备用路线与取消 | [DirectRoutes](../app/src/main/java/dev/gdirect/lite/network/DirectRoutes.java) |

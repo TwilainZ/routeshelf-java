@@ -140,6 +140,7 @@ public final class DownloadService extends Service {
         catch(RuntimeException error){transferGate.set(false);snapshot=new Snapshot("无法启动文件传输，请保持应用在前台后重试。",0,-1,0,false,false,null,null);stopSelf(startId);return START_NOT_STICKY;}
         thread = new Thread(() -> {
             long logOperation=DiagnosticLog.get().operation(),logStart=System.nanoTime();
+            long healthGeneration=GoogleNetwork.get().healthGeneration();
             DiagnosticLog.get().record(uploadUri!=null?DiagnosticLog.Event.UPLOAD_BEGIN:DiagnosticLog.Event.DOWNLOAD_BEGIN,logOperation,null,null,null,0,0,null);
             Snapshot outcome;
             try {
@@ -159,7 +160,10 @@ public final class DownloadService extends Service {
                 outcome = new Snapshot((cancelled.get() ? canceledMessage : (uploadUri!=null?"上传失败：":"下载失败：") + explain(ex)),
                     bytes.get(), snapshot.total, 0, false, false, null, null);
             }
-            if(outcome.finished)DiagnosticLog.get().record(DiagnosticLog.Event.TRANSFER_OK,logOperation,null,null,null,DiagnosticLog.elapsed(logStart),0,null);
+            if(outcome.finished){
+                if(uploadUri==null)GoogleNetwork.get().downloadVerified(healthGeneration);
+                DiagnosticLog.get().record(DiagnosticLog.Event.TRANSFER_OK,logOperation,null,null,null,DiagnosticLog.elapsed(logStart),0,null);
+            }
             Snapshot result = outcome;
             Thread completedWorker = Thread.currentThread();
             new android.os.Handler(getMainLooper()).post(() -> {

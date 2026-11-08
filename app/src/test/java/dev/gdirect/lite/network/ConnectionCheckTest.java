@@ -8,6 +8,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.Test;
 
 public final class ConnectionCheckTest {
+    @Test public void checkTimingSurvivesCancellationAndFinishedResultsCanBeCleared()throws Exception {
+        ConnectionCheck check=new ConnectionCheck();CountDownLatch started=new CountDownLatch(1);
+        check.start(()->{started.countDown();try{new CountDownLatch(1).await();}catch(InterruptedException e){Thread.currentThread().interrupt();throw new IOException(e);}return "unused";});
+        assertTrue(started.await(2,TimeUnit.SECONDS));long time=check.snapshot().startedAt;assertTrue(time>0);
+        check.cancel();assertEquals(time,check.snapshot().startedAt);ConnectionCheck.Snapshot done=terminal(check);
+        assertEquals(time,done.startedAt);assertTrue(done.finishedAt>=time);check.clearResult();assertEquals(0,check.snapshot().startedAt);
+    }
     private static ConnectionCheck.Snapshot terminal(ConnectionCheck check)throws Exception {
         long end=System.nanoTime()+TimeUnit.SECONDS.toNanos(3);
         while(check.snapshot().active()&&System.nanoTime()<end)Thread.sleep(1);

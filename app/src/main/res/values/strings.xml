@@ -1,4 +1,14 @@
 <resources>
+    <string name="connection_status_title">连接状态</string>
+    <string name="connection_back">返回</string>
+    <string name="connection_check">检测连接</string>
+    <string name="connection_account">Google 账户</string>
+    <string name="connection_api">云盘服务</string>
+    <string name="connection_download">文件下载</string>
+    <string name="connection_mode">连接方式</string>
+    <string name="connection_change_mode">更改连接方式</string>
+    <string name="connection_view_logs">查看连接日志</string>
+    <string name="connection_evidence_note">检测不会读取私人文件。线路验证、账户授权和实际下载分别显示；状态在切网后清除，验证超过 5 分钟后需重新确认。</string>
     <string name="drive_restoring">正在恢复上次的 Google Drive 连接…</string>
     <string name="drive_auth_superseded">这次连接请求已结束，请重新连接。</string>
     <string name="drive_restore_required">已记住上次连接。Google 需要你确认，请点击连接继续。</string>

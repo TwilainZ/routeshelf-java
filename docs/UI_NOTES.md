@@ -14,3 +14,6 @@
 0.7.3 将设置页的手写文字按钮替换为 AndroidX PreferenceFragmentCompat、PreferenceCategory、Preference 和 ListPreference，模式/并行数使用 MaterialAlertDialogBuilder 单选框。连接、账户、下载、关于四组有标题和独立摘要；模式状态明确显示，检测中切换先取消后应用，传输期间说明限制。返回云盘后按新模式刷新目录。移除旧 settingsRowStyle；日夜模式继续使用 Material 3 语义颜色。
 
 参考 Google 官方 Material Android 文档 [Dialogs](https://github.com/material-components/material-components-android/blob/master/docs/components/Dialog.md)、[Radio buttons](https://github.com/material-components/material-components-android/blob/master/docs/components/RadioButton.md)，以及 [AndroidX PreferenceFragmentCompat](https://github.com/androidx/androidx/blob/androidx-main/preference/preference/src/main/java/androidx/preference/PreferenceFragmentCompat.java)。组件编译与 Lint 已验证；本环境未执行手机视觉验收。
+
+
+0.7.5 增加 Material 连接状态页和云盘顶部实时文字入口，使用官方工具栏、不定进度、按钮、分隔线及语义文字样式。账户、API 和下载独立成行，错误同时用文字表达；检查时间、VPN 和模式就地显示，底部提供日志。状态页可滚动、大屏限制内容宽度；所有操作至少 48dp。运行状态与文案有 JVM/真实回环 TLS 测试，未将静态布局或编译当作手机视觉验收。

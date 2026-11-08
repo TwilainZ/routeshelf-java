@@ -144,7 +144,7 @@ public final class SettingsActivity extends AppCompatActivity {
                     .setNegativeButton(android.R.string.cancel,null).setPositiveButton(R.string.relay_allow,(d,w)->requestMode(selected)).show();
                 else requestMode(selected);return false;
             });connection.addPreference(mode);
-            stateRow=row(connection,"线路状态","",null);
+            stateRow=row(connection,"连接状态","",()->startActivity(new Intent(requireContext(),ConnectionActivity.class)));
             check=row(connection,"检测连接","重新验证 Google API 和文件下载服务",()->{
                 GoogleNetwork net=GoogleNetwork.get();if(net.connectionCheck().active())net.cancelCheck();else net.startCheck();render();
             });
@@ -196,10 +196,11 @@ public final class SettingsActivity extends AppCompatActivity {
             }
             mode.setValue(Integer.toString(net.connectionMode()));mode.setSummary(mode.getEntry()+(transfer?" · 停止当前传输后可切换":""));mode.setEnabled(!transfer&&pendingMode<0);
             stateRow.setSummary(pendingMode>=0?"正在停止旧检测，随后切换连接方式…":
-                state.active()?"正在检测，可取消\n"+net.summary():state.detail.isEmpty()?net.summary():state.detail);
+                dev.gdirect.lite.ui.ConnectionText.headline(net.health(),DriveSession.INSTANCE.connected(),
+                    GoogleAuthorization.memory(requireContext()).state()==dev.gdirect.lite.auth.RememberedAuthorization.State.RESTORING,state.active()));
             check.setTitle(state.state==ConnectionCheck.State.CANCELLING?"正在取消…":state.active()?"取消检测":"重新检测连接");
-            check.setEnabled(!transfer&&pendingMode<0&&state.state!=ConnectionCheck.State.CANCELLING&&!net.systemNetwork());
-            check.setSummary(transfer?"当前传输结束后可重新检测":net.systemNetwork()?"使用设备的网络与代理设置":"重新验证 Google API 和文件下载服务");
+            check.setEnabled(net.health().online&&!transfer&&pendingMode<0&&state.state!=ConnectionCheck.State.CANCELLING);
+            check.setSummary(!net.health().online?"请先连接 Wi-Fi 或移动网络":transfer?"当前传输结束后可重新检测":"重新验证云盘线路和文件服务");
             boolean connected=DriveSession.INSTANCE.connected(),revoking=GoogleAuthorization.revoking.get();
             account.setSummary(connected?(DriveSession.INSTANCE.writable()?"已授权 · 可以管理文件":"已授权 · 只读访问"):
                 GoogleAuthorization.memory(requireContext()).remembered()?"已记住连接，等待恢复":"尚未连接");
