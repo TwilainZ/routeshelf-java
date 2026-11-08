@@ -23,6 +23,8 @@ jobs:
           echo '::add-matcher::apple/tools/swift-matcher.json'
           bash apple/tools/check.sh
       - name: Package and verify universal Mac application, ZIP and DMG
+        env:
+          GDIRECT_MAC_SIGNING: ad-hoc
         run: bash apple/tools/package-macos.sh
       - uses: actions/upload-artifact@v5
         with:

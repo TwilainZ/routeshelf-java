@@ -55,6 +55,20 @@ bash apple/tools/package-macos.sh
 
 本轮为 **ad-hoc 开发预览签名，未 Apple 公证**；没有创建或丢弃永久 Apple 私钥。macOS 对从网络下载的预览可能要求用户在系统“隐私与安全性”中明确允许打开。正式公开分发需要所有者自己的 Developer ID 签名与公证，以获得稳定分发身份和钥匙串访问连续性；构建脚本没有关闭系统保护，也没有上传到 App Store。请不要将当前预览说成 Apple 已公证应用。
 
+### 在自己的 Mac/Xcode 构建与签名
+
+使用 Xcode 打开 `apple/Package.swift`，选择 `GDirectMac` / `My Mac` 可开发调试。若需要独立 App target 的 Signing & Capabilities 界面，应在本机补建引用这两个本地库的 Xcode App 工程；当前仓库仍以 Swift Package 和打包脚本为入口。
+
+打包脚本默认 `GDIRECT_MAC_SIGNING=auto`，只使用本机钥匙串已有的有效应用签名身份：优先 Developer ID Application，其次 Apple Development；有多个同类证书时要求用 `GDIRECT_MAC_SIGN_IDENTITY` 明确指定证书 SHA-1，避免自动选错团队。没有证书时明确记录 ad-hoc。设置 `GDIRECT_MAC_SIGNING=developer-id` 可要求正式身份，缺失时直接失败，绝不降级冒充正式签名。证书 SHA-1 是公开指纹，不是私钥。
+
+如已在本机通过 `xcrun notarytool store-credentials GDirectLite` 交互保存公证凭据，使用：
+
+```sh
+GDIRECT_MAC_SIGNING=developer-id GDIRECT_MAC_NOTARY_PROFILE=GDirectLite bash apple/tools/package-macos.sh
+```
+
+它会为 Developer ID 启用 hardened runtime/安全时间戳，等待 Apple 接受 App 与 DMG 公证、装订票据并验证。仅这些操作全部成功才在清单中标记 appleNotarized=true。CI 当前明确选择 ad-hoc；本地 Apple 身份与公证分支尚待具备证书的 Mac 实测，不宣称已经正式签名。脚本不创建、导出或上传任何私钥，也不要求重建 Android OAuth 客户端。
+
 ## 验证边界
 
 本地 Linux 已执行共享核心测试，覆盖协议分帧、PKCE、安全跳转、续传/取消/防覆盖和选线状态。Mac 专有测试覆盖真实 TLS、主机名/根证书拒绝、发送前会话守卫及 MD5；需以 Mac 工作流的实际结果记录完成状态。真实账号、运营商网络、Mac 安装/钥匙串交互和 UI 触控仍需设备验收。

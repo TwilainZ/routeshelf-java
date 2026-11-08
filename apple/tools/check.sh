@@ -2,6 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 swift --version
+python3 tools/test_signing_identity.py
 swift test --jobs 3
 swift build --configuration release --product GDirectMac --jobs 3
 if [ "$(uname -s)" != Darwin ]; then
