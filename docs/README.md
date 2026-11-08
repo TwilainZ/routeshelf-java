@@ -2,6 +2,7 @@
 
 | 目的 | 文档 |
 | --- | --- |
+| Swift 核心、macOS 源码、构建与交付边界 | [Apple 工程](../apple/README.md) |
 | 功能、版本与主要限制 | [项目首页](../README.md) · [更新记录](../CHANGELOG.md) |
 | 核心职责、调用链和源码入口 | [关键代码导航](ARCHITECTURE.md) |
 | 本地构建、测试、CI、签名与目录 | [开发环境](DEVELOPMENT.md) |

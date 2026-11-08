@@ -13,3 +13,12 @@ __pycache__/
 *.apk
 *.apks
 .DS_Store
+
+# Apple build caches, local credentials and release outputs
+apple/.build/
+apple/.swiftpm/
+*.xcuserstate
+**/xcuserdata/
+*.p12
+*.mobileprovision
+Config.local.json

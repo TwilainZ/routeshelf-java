@@ -57,6 +57,12 @@ Navigation policy: auxiliary pages use AppScreens CLEAR_TOP|SINGLE_TOP intents t
 
 ## Source layout
 
+On 2026-11-08 the owner requested primarily a reusable Swift core packaged for macOS. New Apple work lives under apple/ as GDirectCore, GDirectApple and a thin GDirectMac SwiftUI app. Preserve Android and its signing key. Do not copy upstream GPL code for Apple either. Apple-owned APIs and independent protocol implementations are used; the already reviewed app-owned bootstrap JSON and MPL GTS resource subset retain their notices. The first desktop phase is read-only and is not full Android parity.
+
+Linux Swift tests cover portable core only. Apple Network/Security/CryptoKit/SwiftUI code and actual packaging require the real macOS CI job; never report conditional Linux compilation as macOS typechecking. Build Mac ZIP/DMG only from clean committed source with apple/tools/package-macos.sh. Bundle dev.gdirect.lite.mac is a separate platform identity. Current packaging is explicitly ad-hoc, unnotarized development preview: no permanent Apple signing key has been generated, and this is not a notarized release. Future Developer ID credentials belong in secure external configuration, never Git/chat. Keep OAuth desktop configuration/refresh credentials only in Keychain; initial browser auth uses a loopback Desktop OAuth client and does not reuse Android client/signature or iOS auth policy.
+
+Respect environment network policy during Apple work. No public-IP test scans or CI-as-fetch-proxy. CI may build/run local fixture tests and package the app. GitHub API/artifact access in the current executor needs its configured network policy applied; a saved draft is not applied access. Do not work around a blocked API with CI or extract Git proxy credentials.
+
 Android component entrypoints remain in app/src/main/java/dev/gdirect/lite/ to preserve component identity. Helpers and matching JVM tests use auth/, network/, drive/, transfer/, preview/, diagnostics/ and ui/ packages. See docs/ARCHITECTURE.md for key code. Keep internal state private and cross-package APIs narrow; public Java APIs are in-process, not exported Android components.
 
 The original ZIP now lives in docs/history/prototype/ with identical bytes. Icon design sources are in docs/design/. Standalone checks are in tools/checks/, and the offline legacy inspector is in tools/legacy-inspector/ (Gradle :inspector). The retired temporary-key generation script is removed; only the retained preview key is used for delivery.

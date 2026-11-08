@@ -2,6 +2,8 @@
 
 # GDirect Lite Android
 
+**Swift 核心与 macOS 开发已加入 [apple/](apple/README.md)**：可复用库、Apple TLS/钥匙串适配、原生 SwiftUI 客户端及通用 Mac 打包工作流。Android 当前版本与原固定签名保持；Apple 编译结果和交付状态单独记录，不能用 Linux 核心测试代替。
+
 独立开发的 Android Google Drive 客户端：浏览、预览、管理和传输文件，并自动寻找当前网络可用的数据连接。界面采用熟悉的 Material 搜索、底部导航和文件操作。
 
 **当前：0.8.4-navigation-preview · Android 10+ · Java · 开发预览。** 非 Google 官方应用。功能思路受 mizorewww/gdirect 启发，未移植其源码、aria2 补丁、种子或界面资产。

@@ -1,0 +1,47 @@
+name: Build Swift core and macOS preview
+on:
+  push:
+    branches: [main, 'dev/**']
+    paths: ['apple/**', '.github/workflows/build-macos.yml', 'LICENSE', 'AGENTS.md']
+  pull_request:
+    paths: ['apple/**', '.github/workflows/build-macos.yml', 'LICENSE']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      - name: Show actual Apple toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+      - name: Core tests and real Apple loopback TLS tests
+        run: bash apple/tools/check.sh
+      - name: Package and verify universal Mac application, ZIP and DMG
+        run: bash apple/tools/package-macos.sh
+      - uses: actions/upload-artifact@v5
+        with:
+          name: GDirectLite-macOS-${{ github.sha }}
+          path: apple/build/distribution/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Capture actual Mac UI using labelled offline fixtures
+        continue-on-error: true
+        run: |
+          mkdir -p apple/build/ui
+          ditto -x -k apple/build/distribution/${{ github.sha }}/*.zip apple/build/ui/
+          open "apple/build/ui/GDirect Lite.app" --args --ui-smoke
+          python3 -c 'import time; time.sleep(4)'
+          screencapture -x apple/build/ui/mac-light.png
+          osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to true'
+          python3 -c 'import time; time.sleep(2)'
+          screencapture -x apple/build/ui/mac-dark.png
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: macOS-native-ui-${{ github.sha }}
+          path: apple/build/ui/*.png
+          if-no-files-found: ignore
