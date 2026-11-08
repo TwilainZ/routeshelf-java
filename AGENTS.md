@@ -10,7 +10,7 @@ Owner authorized Apache-2.0 for application-owned source after ownership review 
 
 ## Current product and verification truth
 
-0.7.3-network-preview/code 12 includes browsing/search/paging/sorting, shared drives/shortcuts, explicit opt-in file management/sharing/trash, native previews and exports, foreground uploads/downloads, and Material Drive-style navigation with a standalone unified SettingsActivity. See README, PRODUCT.md, DESIGN.md, docs/ACCEPTANCE.md and docs/DIRECT_NETWORK.md.
+0.7.4-session-preview/code 13 includes browsing/search/paging/sorting, shared drives/shortcuts, explicit opt-in file management/sharing/trash, native previews and exports, foreground uploads/downloads, and Material Drive-style navigation with a standalone unified SettingsActivity. See README, PRODUCT.md, DESIGN.md, docs/ACCEPTANCE.md and docs/DIRECT_NETWORK.md.
 
 Network implementation: independent GTS-only trust store, normal/no-SNI/fixed g.cn TLS identity with logical Host separation, official non-Cloud IPv4 range filtering (a small attributed three-/24 bootstrap subset when the official catalog is unavailable), fast candidates before bounded expanded TCP discovery, up to eight verified IP/TLS combinations, explicit opt-in known relay, and checked media-only Google content redirects without credentials. Default remains Google-only. When relay consent exists, verify the fixed relay before blocking on official range/DNS discovery; successful preferred verification returns immediately, failure has a 5.5s/quarter-budget bound before Google fallback. Never silently enable relay consent. No arbitrary SNI, arbitrary relay, certificate forgery or trust-all fallback. Bundled public roots retain MPL-2.0, see docs/TRUST_ROOTS.md.
 
@@ -20,7 +20,7 @@ The owner requested builtin known Google candidates. Six individually unverified
 
 ConnectionCheck is application-owned, single-flight and cancellable; screen exit/rotation must not cancel it. Do not restart scans until cancellation finishes or reset policy while a transfer is active. Actual requests bind a network epoch and recheck it plus the account after TLS, before HTTP transmission; cancellation/policy changes must not poison healthy route caches. Bootstrap keeps at most two in-range historical hints before packaged candidates, all requiring revalidation. Settings centralizes account, routing, transfer preferences and help; public one-transfer IP remains separate.
 
-Current local baseline: 143 JVM tests per debug/preview variant, 11 standalone parsing/security checks, real loopback TLS and actual builds/Lint. No current phone UI/launcher screenshots, real-account transfer or China-network acceptance. Earlier owner reports of original public download and old main-package login do not prove this version. A prior software emulator without KVM failed to install; do not repeat it as evidence.
+Current local baseline: 158 JVM tests per debug/preview variant, 11 standalone parsing/security checks, real loopback TLS and actual builds/Lint. No current phone UI/launcher screenshots, real-account transfer or China-network acceptance. Earlier owner reports of original public download and old main-package login do not prove this version. A prior software emulator without KVM failed to install; do not repeat it as evidence.
 
 ## Signing and delivery continuity
 
@@ -42,6 +42,8 @@ Local DiagnosticLog is capped at 512 entries/128 KiB, stored privately with coal
 - UI direction is close to Google Drive using own assets and Android Material components, with day/night, 48dp touch targets, font scaling, IME/system insets and accessible states. Do not invent features or claims to fill the interface.
 
 Pure Google discovery pipelines up to 512 expanded addresses through 24 TCP and 6 TLS workers without stopping at 32 TCP answers or 48 expanded candidates. Do not re-probe failed fast addresses in the same expansion. A failed cached identity gets bounded same-IP alternate-identity verification before fresh discovery. Network handle or VPN-presence changes invalidate routes; guards check the live path before HTTP transmission. Settings uses AndroidX Preference and Material dialogs, saves mode flags atomically, and cancels an active check before applying a pending selection.
+
+RememberedAuthorization stores only the last Google account selector and local management choice in private, backup-excluded preferences. Access and refresh tokens are never persisted. Restore uses the official SDK for the selected account, is application-owned and single-flight, and never launches consent UI automatically. Require actual matching account/grants; wider cached grants cannot enable writes for a read-only profile. Logout/revoke forget the profile and invalidate old callbacks; API 401 requires interaction instead of an automatic reconnect loop. Silent restore times out after 30s, retains the profile on temporary failures and never switches accounts.
 
 ## Source layout
 

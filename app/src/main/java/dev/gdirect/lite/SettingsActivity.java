@@ -155,8 +155,8 @@ public final class SettingsActivity extends AppCompatActivity {
             account=row(accounts,"账户状态","",null);
             connectAccount=row(accounts,"连接 Google Drive","在 Google 页面完成授权",()->host().accountAction("connect"));
             manageAccount=row(accounts,"文件管理权限","按需允许新建、上传和修改文件",()->host().accountAction("manage"));
-            disconnectAccount=row(accounts,"断开连接","停止本机账户传输，保留 Google 授权",()->new MaterialAlertDialogBuilder(requireContext())
-                .setTitle(R.string.drive_disconnect).setMessage("断开本机连接并停止当前账户的传输。下次可重新连接。")
+            disconnectAccount=row(accounts,"断开连接","忘记本机连接并停止自动恢复，保留 Google 授权",()->new MaterialAlertDialogBuilder(requireContext())
+                .setTitle(R.string.drive_disconnect).setMessage("忘记本机连接并停止当前账户传输。再次打开应用不会自动连接；下次可手动重新连接。")
                 .setNegativeButton(android.R.string.cancel,null).setPositiveButton(R.string.drive_disconnect,(d,w)->host().accountAction("disconnect")).show());
             revokeAccount=row(accounts,"撤销 Google 授权","同时撤销此应用的 Google 访问权限",()->host().accountAction("revoke"));
             androidx.preference.PreferenceCategory transfers=category("下载");
@@ -201,9 +201,10 @@ public final class SettingsActivity extends AppCompatActivity {
             check.setEnabled(!transfer&&pendingMode<0&&state.state!=ConnectionCheck.State.CANCELLING&&!net.systemNetwork());
             check.setSummary(transfer?"当前传输结束后可重新检测":net.systemNetwork()?"使用设备的网络与代理设置":"重新验证 Google API 和文件下载服务");
             boolean connected=DriveSession.INSTANCE.connected(),revoking=GoogleAuthorization.revoking.get();
-            account.setSummary(connected?(DriveSession.INSTANCE.writable()?"已授权 · 可以管理文件":"已授权 · 只读访问"):"尚未连接");
+            account.setSummary(connected?(DriveSession.INSTANCE.writable()?"已授权 · 可以管理文件":"已授权 · 只读访问"):
+                GoogleAuthorization.memory(requireContext()).remembered()?"已记住连接，等待恢复":"尚未连接");
             connectAccount.setVisible(!connected);manageAccount.setVisible(connected&&!DriveSession.INSTANCE.writable());
-            disconnectAccount.setVisible(connected);revokeAccount.setVisible(connected);
+            disconnectAccount.setVisible(connected||GoogleAuthorization.memory(requireContext()).remembered());revokeAccount.setVisible(connected);
             connectAccount.setEnabled(!revoking);manageAccount.setEnabled(!revoking);disconnectAccount.setEnabled(!revoking);revokeAccount.setEnabled(!revoking);
             int count=requireContext().getSharedPreferences("transfer-settings",MODE_PRIVATE).getInt("workers",4);
             workers.setValue(Integer.toString(count));workers.setSummary(workers.getEntry()+"，应用于之后的下载");

@@ -4,7 +4,7 @@
 
 独立开发的 Android Google Drive 客户端：浏览、预览、管理和传输文件，并自动寻找当前网络可用的数据连接。界面采用熟悉的 Material 搜索、底部导航和文件操作。
 
-**当前：0.7.3-network-preview · Android 10+ · Java · 开发预览。** 非 Google 官方应用。功能思路受 mizorewww/gdirect 启发，未移植其源码、aria2 补丁、种子或界面资产。
+**当前：0.7.4-session-preview · Android 10+ · Java · 开发预览。** 非 Google 官方应用。功能思路受 mizorewww/gdirect 启发，未移植其源码、aria2 补丁、种子或界面资产。
 
 [文档导航](docs/README.md) · [开发构建](docs/DEVELOPMENT.md) · [Google 配置](docs/GOOGLE_SETUP.md) · [验收清单](docs/ACCEPTANCE.md) · [更新记录](CHANGELOG.md)
 
@@ -12,6 +12,7 @@
 
 ## 可以做什么
 
+- **保持连接**：成功连接一次后记住上次账户与权限选择，重启后通过 Google 官方授权服务自动恢复；只有 Google 要求重新确认时才需操作。主动断开或撤销会忘记本机连接。令牌仍只保留在内存。
 - **文件浏览**：文件夹、搜索、分页和排序；最近修改、星标、与我共享、回收站和共享云端硬盘；快捷方式与资源密钥。
 - **预览与导出**：PDF、图片、文本和受设备支持的音视频；Google 文档/幻灯片/绘图导出 PDF，表格导出 XLSX。私有缓存和本地预览，不把授权 URL 交给网页。
 - **文件管理**：新建文件夹、重命名、星标、移动、回收站恢复及有条件的永久删除；共享链接、查看/添加/移除访问权限。默认只读，需要管理时明确申请权限。
@@ -30,7 +31,7 @@
 
 当前尚无公开稳定 Release。不要将 Actions 的离线检查器或随机主 debug 包当作可升级客户端。可交付预览必须通过固定签名打包器验证，并包含 APK-IDENTITY.json 和校验值。
 
-现有测试版身份为 `dev.gdirect.lite.preview`，证书固定在 [preview-signing.json](config/preview-signing.json)。本次版本码 12，可覆盖同签名测试版；与旧主包 `dev.gdirect.lite` 并存。维护者已报告完成 Google 配置，普通更新无需再注册 OAuth，也无需删除旧主版。新开发者的一次性配置见 [Google 设置](docs/GOOGLE_SETUP.md)。
+现有测试版身份为 `dev.gdirect.lite.preview`，证书固定在 [preview-signing.json](config/preview-signing.json)。本次版本码 13，可覆盖同签名测试版；与旧主包 `dev.gdirect.lite` 并存。维护者已报告完成 Google 配置，普通更新无需再注册 OAuth，也无需删除旧主版。新开发者的一次性配置见 [Google 设置](docs/GOOGLE_SETUP.md)。
 
 私钥不进入仓库、APK 或交付 ZIP。缺少原密钥时拒绝交付，不自动生成替代签名。CI 只有匹配的预览密钥 Secret 可用时才发布预览工件；目前未确认该项配置，没有密钥仍可完成源码检查。
 
@@ -45,7 +46,7 @@ bash tools/check.sh
 
 统一入口执行 Java 检查、debug/preview JVM 测试、编译和 Android Lint；不需要预览私钥。[GitHub Actions](.github/workflows/build-apk.yml) 使用同一入口。只有保留签名可用时才执行 [预览打包器](tools/build-preview-apk.sh)，核对实际包名、版本、提交、签名和根证书包。
 
-0.7.3 本地验证为每变体 143 项 JVM 测试、11 项独立检查及编译/Lint；真实回环 TLS 覆盖 SNI/Host、证书、凭据跳转和回退。**本版手机布局、真实账号和中国运营商网络仍未验收**，不以编译代替使用效果。
+0.7.4 本地验证为每变体 158 项 JVM 测试、11 项独立检查及编译/Lint；真实回环 TLS 覆盖 SNI/Host、证书、凭据跳转和回退。**本版手机布局、真实账号和中国运营商网络仍未验收**，不以编译代替使用效果。
 
 ## 目前的边界
 

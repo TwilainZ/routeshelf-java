@@ -23,6 +23,7 @@ app/src/main/java/dev/gdirect/lite/
 
 | 职责 | 源码 |
 | --- | --- |
+| 重启恢复、账户/权限记忆、旧回调和主动断开 | [RememberedAuthorization](../app/src/main/java/dev/gdirect/lite/auth/RememberedAuthorization.java) · [GoogleAuthorization](../app/src/main/java/dev/gdirect/lite/auth/GoogleAuthorization.java) |
 | 默认模式、明确同意的中转、范围准备、切网代次与 HTTP 工厂 | [GoogleNetwork](../app/src/main/java/dev/gdirect/lite/GoogleNetwork.java) |
 | 缓存、优先中转、有界发现、三种 TLS 模式、备用路线与取消 | [DirectRoutes](../app/src/main/java/dev/gdirect/lite/network/DirectRoutes.java) |
 | 有界 TCP → TLS 流水线与网络/VPN 路径变化 | [RouteProbeQueue](../app/src/main/java/dev/gdirect/lite/network/RouteProbeQueue.java) · [NetworkPathTracker](../app/src/main/java/dev/gdirect/lite/network/NetworkPathTracker.java) |

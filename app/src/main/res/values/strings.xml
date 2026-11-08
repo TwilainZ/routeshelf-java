@@ -1,4 +1,8 @@
 <resources>
+    <string name="drive_restoring">正在恢复上次的 Google Drive 连接…</string>
+    <string name="drive_auth_superseded">这次连接请求已结束，请重新连接。</string>
+    <string name="drive_restore_required">已记住上次连接。Google 需要你确认，请点击连接继续。</string>
+    <string name="drive_restore_failed">已记住上次连接，暂时未能恢复。请检查网络后点击连接重试。</string>
     <string name="drive_preview_full_media">预览会先读取完整文件（%1$s），并临时保存到应用缓存。继续预览？</string>
     <string name="drive_revoke_connect">请先连接要撤销的 Google 账号，再撤销当前会话授权；也可直接到 Google 账号的第三方访问设置中移除应用。</string>
     <string name="drive_folder_depth">浏览路径超过 100 层，请返回上级或使用搜索。</string>

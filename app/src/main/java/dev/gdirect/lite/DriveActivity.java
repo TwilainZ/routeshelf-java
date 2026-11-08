@@ -2,6 +2,7 @@ package dev.gdirect.lite;
 
 import dev.gdirect.lite.auth.AuthorizationCallback;
 import dev.gdirect.lite.auth.GoogleAuthorization;
+import dev.gdirect.lite.auth.RememberedAuthorization;
 import dev.gdirect.lite.diagnostics.AppDiagnostics;
 import dev.gdirect.lite.diagnostics.DiagnosticLog;
 import dev.gdirect.lite.drive.DriveApi;
@@ -84,12 +85,29 @@ public final class DriveActivity extends AppCompatActivity {
     private boolean loading, authorizing, waitingResolution, wasConnected, transferActive, wasRevoking;
     private boolean editing,listingFailed,retryAppend,refreshAfterTransfer;
     private boolean managementRequested;
+    private long authorizationTicket=-1;
+    private RememberedAuthorization.State observedRestore=RememberedAuthorization.State.IDLE;
     private long observedMutation=MutationCoordinator.INSTANCE.revision();
     private int observedConnectionMode;
     private String uploadParent;
     private long uploadSession=-1;
     private final Runnable ticker = new Runnable() {
         @Override public void run() {
+            if(wasConnected&&!DriveSession.INSTANCE.connected())clearBrowser();
+            if(!authorizing&&!GoogleAuthorization.revoking.get()){
+                RememberedAuthorization memory=GoogleAuthorization.memory(DriveActivity.this);
+                if(!DriveSession.INSTANCE.connected())memory.restore();
+                if(!wasConnected&&DriveSession.INSTANCE.connected()){
+                    authorizationPhase="restored";clearBrowser();load(false);
+                }else if(!DriveSession.INSTANCE.connected()&&memory.state()!=observedRestore){
+                    observedRestore=memory.state();
+                    if(observedRestore==RememberedAuthorization.State.RESTORING){authorizationPhase="restoring";message.setText(R.string.drive_restoring);}
+                    else if(observedRestore==RememberedAuthorization.State.NEEDS_ACTION){authorizationPhase="restore-required";message.setText(R.string.drive_restore_required);}
+                    else if(observedRestore==RememberedAuthorization.State.FAILED){authorizationPhase="restore-failed";message.setText(R.string.drive_restore_failed);}
+                    updateControls();
+                }
+                if(DriveSession.INSTANCE.connected())observedRestore=memory.state();
+            }
             if(editing!=MutationCoordinator.INSTANCE.busy())updateControls();
             if(observedMutation!=MutationCoordinator.INSTANCE.revision()&&!loading&&!editing&&DriveSession.INSTANCE.connected()) {
                 observedMutation=MutationCoordinator.INSTANCE.revision();
@@ -151,6 +169,7 @@ public final class DriveActivity extends AppCompatActivity {
         folderName = getString(R.string.drive_root);
         if (saved != null) {
             managementRequested=saved.getBoolean("management_requested",false);
+            authorizationTicket=saved.getLong("authorization_ticket",-1);
             uploadParent=saved.getString("upload_parent");uploadSession=saved.getLong("upload_session",-1);
             authorizationPhase = saved.getString("authorization_phase","not-requested");
             if (saved.containsKey("last_activity_result")) lastActivityResult = saved.getInt("last_activity_result");
@@ -327,10 +346,12 @@ public final class DriveActivity extends AppCompatActivity {
     }
 
     private void authorize() {
-        authorize(false);
+        RememberedAuthorization.Profile profile=GoogleAuthorization.memory(this).profile();
+        authorize(profile!=null&&profile.manage);
     }
     private void authorize(boolean manage) {
         if (authorizing || GoogleAuthorization.revoking.get()) return;
+        authorizationTicket=GoogleAuthorization.memory(this).beginInteractive();
         DiagnosticLog.get().event(DiagnosticLog.Event.AUTH_BEGIN);
         authorizationPhase = "request";
         managementRequested=manage;
@@ -338,8 +359,11 @@ public final class DriveActivity extends AppCompatActivity {
         authorizing = true;
         updateControls();
         message.setText(R.string.drive_authorizing);
-        AuthorizationRequest request = AuthorizationRequest.builder()
-            .setRequestedScopes(Collections.singletonList(new Scope(manage?DriveApi.MANAGE_SCOPE:DriveApi.READONLY_SCOPE))).build();
+        AuthorizationRequest.Builder builder = AuthorizationRequest.builder()
+            .setRequestedScopes(Collections.singletonList(new Scope(manage?DriveApi.MANAGE_SCOPE:DriveApi.READONLY_SCOPE)));
+        RememberedAuthorization.Profile profile=GoogleAuthorization.memory(this).profile();
+        if(profile!=null)builder.setAccount(new android.accounts.Account(profile.account,"com.google"));
+        AuthorizationRequest request=builder.build();
         Identity.getAuthorizationClient(this).authorize(request)
             .addOnSuccessListener(result -> {
                 if (isDestroyed() || isFinishing()) return;
@@ -397,7 +421,10 @@ public final class DriveActivity extends AppCompatActivity {
             if (!manage && !result.getGrantedScopes().contains(DriveApi.READONLY_SCOPE)) {
                 authFailed(getString(R.string.drive_scope_missing)); return;
             }
-            DriveSession.INSTANCE.connect(result.getAccessToken(),new java.util.HashSet<>(result.getGrantedScopes()),managementRequested);
+            if(!GoogleAuthorization.memory(this).acceptInteractive(authorizationTicket,result.getAccessToken(),
+                new java.util.HashSet<>(result.getGrantedScopes()),managementRequested,GoogleAuthorization.account(result))){
+                authFailed(getString(R.string.drive_auth_superseded));return;
+            }
             DiagnosticLog.get().event(DiagnosticLog.Event.AUTH_OK);
             authorizationPhase = "authorized";
             authorizing = false; waitingResolution = false;
@@ -409,6 +436,8 @@ public final class DriveActivity extends AppCompatActivity {
     private void authFailed(String reason) {
         DiagnosticLog.get().record(DiagnosticLog.Event.AUTH_FAILED,0,null,null,null,0,lastSdkStatus==null?0:lastSdkStatus,null);
         authorizing = false; waitingResolution = false;
+        GoogleAuthorization.memory(this).interactiveFailed(authorizationTicket);
+        observedRestore=GoogleAuthorization.memory(this).state();
         message.setText(getString(R.string.auth_failure_with_build,reason,AppDiagnostics.buildLabel(this))); updateControls();
     }
 
@@ -429,9 +458,9 @@ public final class DriveActivity extends AppCompatActivity {
         DiagnosticLog.get().event(DiagnosticLog.Event.ACCOUNT_DISCONNECTED);
         try {
             String token = DriveSession.INSTANCE.lease().token();
-            DriveSession.INSTANCE.disconnect();
+            GoogleAuthorization.memory(this).forget();
             Identity.getAuthorizationClient(this).clearToken(ClearTokenRequest.builder().setToken(token).build());
-        } catch (DriveSession.AuthorizationRequired ignored) { DriveSession.INSTANCE.disconnect(); }
+        } catch (DriveSession.AuthorizationRequired ignored) { GoogleAuthorization.memory(this).forget(); }
         clearBrowser(); message.setText(R.string.drive_disconnected);
     }
 
@@ -473,7 +502,8 @@ public final class DriveActivity extends AppCompatActivity {
         retry.setVisibility(listingFailed&&wasConnected?View.VISIBLE:View.GONE);
         retry.setEnabled(!loading&&!editing);
         retry.setText(retryAppend?R.string.drive_retry_more:R.string.drive_retry_list);
-        loadingIndicator.setVisibility(loading || editing || authorizing || wasRevoking ? View.VISIBLE : View.GONE);
+        loadingIndicator.setVisibility(loading || editing || authorizing || wasRevoking
+            ||GoogleAuthorization.memory(this).state()==RememberedAuthorization.State.RESTORING ? View.VISIBLE : View.GONE);
         invalidateOptionsMenu();
     }
 
@@ -878,10 +908,13 @@ public final class DriveActivity extends AppCompatActivity {
         if (!GoogleAuthorization.revoking.compareAndSet(false,true)) return;
         List<Scope> revokeScopes=new ArrayList<>();for(String scope:DriveSession.INSTANCE.scopes())revokeScopes.add(new Scope(scope));
         if(revokeScopes.isEmpty())revokeScopes.add(new Scope(DriveApi.READONLY_SCOPE));
+        RevokeAccessRequest.Builder builder=RevokeAccessRequest.builder().setScopes(revokeScopes);
+        RememberedAuthorization.Profile profile=GoogleAuthorization.memory(this).profile();
+        if(profile!=null)builder.setAccount(new android.accounts.Account(profile.account,"com.google"));
+        RevokeAccessRequest request=builder.build();
         disconnect();
         message.setText(R.string.drive_revoking); updateControls();
-        Identity.getAuthorizationClient(this).revokeAccess(RevokeAccessRequest.builder()
-            .setScopes(revokeScopes).build())
+        Identity.getAuthorizationClient(this).revokeAccess(request)
             .addOnCompleteListener(result -> {
                 GoogleAuthorization.lastRevokeSucceeded = result.isSuccessful();
                 GoogleAuthorization.revoking.set(false);
@@ -894,6 +927,7 @@ public final class DriveActivity extends AppCompatActivity {
     @Override protected void onSaveInstanceState(Bundle state) {
         state.putLong("mutation_revision",observedMutation);
         state.putBoolean("management_requested",managementRequested);
+        state.putLong("authorization_ticket",authorizationTicket);
         state.putString("upload_parent",uploadParent);state.putLong("upload_session",uploadSession);
         try {
             if(DriveSession.INSTANCE.connected()) {
