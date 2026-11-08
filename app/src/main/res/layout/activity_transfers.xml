@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/transfers_root" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:background="?attr/colorSurface">
+    <com.google.android.material.appbar.MaterialToolbar android:id="@+id/transfers_toolbar" android:layout_width="match_parent" android:layout_height="wrap_content" app:title="@string/ui_transfers_title" app:navigationIcon="@drawable/ic_back" app:navigationContentDescription="@string/connection_back" />
+    <ScrollView android:id="@+id/transfers_scroll" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:fillViewport="true">
+        <LinearLayout android:id="@+id/transfers_content" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="24dp">
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/ui_public_file" android:textAppearance="?attr/textAppearanceTitleLarge" android:accessibilityHeading="true" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="@string/ui_public_help" android:textAppearance="?attr/textAppearanceBodyMedium" android:textColor="?attr/colorOnSurfaceVariant" />
+            <com.google.android.material.textfield.TextInputLayout android:id="@+id/public_link_field" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="20dp" android:hint="@string/ui_file_link" app:boxBackgroundMode="outline">
+                <com.google.android.material.textfield.TextInputEditText android:id="@+id/public_link" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="textUri|textMultiLine" android:minLines="2" android:maxLines="4" android:maxLength="16384" android:textSize="16sp" />
+            </com.google.android.material.textfield.TextInputLayout>
+            <com.google.android.material.button.MaterialButton android:id="@+id/public_paste" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/ui_paste" android:textAllCaps="false" />
+            <com.google.android.material.button.MaterialButton android:id="@+id/public_start" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp" android:layout_marginTop="8dp" android:text="@string/ui_start_download" android:textAllCaps="false" />
+            <com.google.android.material.button.MaterialButton android:id="@+id/public_advanced" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/ui_advanced" android:textAllCaps="false" />
+            <LinearLayout android:id="@+id/public_manual_panel" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
+                <com.google.android.material.textfield.TextInputLayout android:id="@+id/public_ip_field" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="@string/ui_manual_ip" app:boxBackgroundMode="outline" app:helperText="@string/ui_manual_help">
+                    <com.google.android.material.textfield.TextInputEditText android:id="@+id/public_ip" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="phone" android:maxLength="15" android:singleLine="true" android:textSize="16sp" />
+                </com.google.android.material.textfield.TextInputLayout>
+            </LinearLayout>
+            <LinearLayout android:visibility="gone" android:id="@+id/transfer_section" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginTop="24dp">
+                <com.google.android.material.divider.MaterialDivider android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="24dp" />
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/ui_current_transfer" android:textAppearance="?attr/textAppearanceTitleMedium" android:accessibilityHeading="true" />
+                <TextView android:id="@+id/transfer_status" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:textAppearance="?attr/textAppearanceBodyMedium" android:accessibilityLiveRegion="polite" />
+                <com.google.android.material.progressindicator.LinearProgressIndicator android:id="@+id/transfer_progress" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:max="1000" />
+                <TextView android:id="@+id/transfer_amount" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:textAppearance="?attr/textAppearanceBodyMedium" android:textColor="?attr/colorOnSurfaceVariant" />
+                <com.google.android.material.button.MaterialButton android:visibility="gone" android:id="@+id/transfer_stop" style="@style/Widget.Material3.Button.OutlinedButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp" android:layout_marginTop="16dp" android:text="@string/ui_cancel_transfer" android:textAllCaps="false" />
+                <com.google.android.material.button.MaterialButton android:visibility="gone" android:id="@+id/transfer_open" style="@style/Widget.Material3.Button.OutlinedButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/ui_open_file" android:textAllCaps="false" />
+            </LinearLayout>
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:text="@string/ui_download_location" android:textAppearance="?attr/textAppearanceBodySmall" android:textColor="?attr/colorOnSurfaceVariant" />
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>

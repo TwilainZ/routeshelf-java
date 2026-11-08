@@ -3,7 +3,6 @@ package dev.gdirect.lite;
 import dev.gdirect.lite.auth.AuthorizationCallback;
 import dev.gdirect.lite.auth.GoogleAuthorization;
 import dev.gdirect.lite.auth.RememberedAuthorization;
-import dev.gdirect.lite.diagnostics.AppDiagnostics;
 import dev.gdirect.lite.diagnostics.DiagnosticLog;
 import dev.gdirect.lite.drive.DriveApi;
 import dev.gdirect.lite.drive.DriveListing;
@@ -64,8 +63,10 @@ public final class DriveActivity extends AppCompatActivity {
     private final Deque<String[]> parents = new ArrayDeque<>();
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final FileAdapter adapter = new FileAdapter();
-    private TextView message, location, transfer, explanation;
-    private LinearLayout queryRow;
+    private TextView message, location, transfer, explanation,signInTitle;
+    private LinearLayout queryRow,signInPanel,transferPanel;
+    private View pathPanel;
+    private android.widget.ScrollView signInScroll;
     private com.google.android.material.bottomnavigation.BottomNavigationView navigation;
     private com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton create;
     private boolean changingNavigation;
@@ -142,6 +143,7 @@ public final class DriveActivity extends AppCompatActivity {
             // Progress remains readable on focus without repeated spoken interruptions.
             transfer.setAccessibilityLiveRegion(s.active?View.ACCESSIBILITY_LIVE_REGION_NONE:View.ACCESSIBILITY_LIVE_REGION_POLITE);
             if(!android.text.TextUtils.equals(transfer.getText(),transferText))transfer.setText(transferText);
+            transferPanel.setVisibility(hasTransfer?View.VISIBLE:View.GONE);
             transfer.setVisibility(hasTransfer?View.VISIBLE:View.GONE);
             transferProgress.setVisibility(s.active?View.VISIBLE:View.GONE);
             transferProgress.setIndeterminate(s.active&&s.total<=0);
@@ -223,12 +225,14 @@ public final class DriveActivity extends AppCompatActivity {
                 else { setEnabled(false); getOnBackPressedDispatcher().onBackPressed(); }
             }
         });
-        explanation = label(getString(R.string.drive_consent), 16);
+        signInPanel=column();signInPanel.setPadding(dp(24),dp(24),dp(24),dp(24));
+        signInTitle=label("连接你的 Google Drive",24);signInTitle.setAccessibilityHeading(true);signInPanel.addView(signInTitle);
+        explanation = label("浏览、预览和下载云盘文件。默认只读，按需开启文件管理。", 16);
         explanation.setPadding(0,dp(16),0,dp(12));
-        root.addView(explanation);
+        signInPanel.addView(explanation);
         connect = button(R.string.drive_connect);
         connect.setOnClickListener(v -> authorize());
-        root.addView(connect, new LinearLayout.LayoutParams(-1,-2));
+        signInPanel.addView(connect, new LinearLayout.LayoutParams(-1,-2));
 
         queryRow = new LinearLayout(this);
         queryRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -270,32 +274,36 @@ public final class DriveActivity extends AppCompatActivity {
         LinearLayout pathRow=new LinearLayout(this);pathRow.setGravity(Gravity.CENTER_VERTICAL);
         location.setMaxLines(2);location.setEllipsize(TextUtils.TruncateAt.END);
         pathRow.addView(location,new LinearLayout.LayoutParams(0,-2,1));
-        up = button(R.string.drive_up);
+        up=(Button)getLayoutInflater().inflate(R.layout.view_folder_up,pathRow,false);
         up.setOnClickListener(v -> goUp());
-        pathRow.addView(up,new LinearLayout.LayoutParams(-2,-2));root.addView(pathRow);
+        pathRow.addView(up,new LinearLayout.LayoutParams(dp(48),-2));root.addView(pathRow);pathPanel=pathRow;
+        root.setPadding(dp(20),0,dp(20),dp(8));
         loadingIndicator = new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);loadingIndicator.setIndeterminate(true);
-        root.addView(loadingIndicator, new LinearLayout.LayoutParams(-1,dp(4)));
+        container.addView(loadingIndicator, new LinearLayout.LayoutParams(-1,dp(4)));
         message = label("",14);
         message.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-        message.setPadding(0,dp(8),0,dp(8));
-        root.addView(message);
+        message.setPadding(dp(20),dp(8),dp(20),dp(8));
+        container.addView(message);
+        message.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int st,int count,int after){}public void onTextChanged(CharSequence s,int st,int before,int count){message.setVisibility(s.length()==0?View.GONE:View.VISIBLE);}public void afterTextChanged(android.text.Editable e){}});
         retry=button(R.string.drive_retry_list);
         retry.setOnClickListener(v->load(retryAppend));
-        root.addView(retry,new LinearLayout.LayoutParams(-1,-2));
+        container.addView(retry,new LinearLayout.LayoutParams(-1,-2));
         fileList = new ListView(this);
         fileList.addHeaderView(root, null, false);
         LinearLayout footer = column();
         more = button(R.string.drive_more);
         more.setOnClickListener(v -> load(true));
         footer.addView(more,new LinearLayout.LayoutParams(-1,-2));
-        transfer = label("",14);
+        transfer = label("",14);transfer.setMaxLines(2);transfer.setEllipsize(TextUtils.TruncateAt.END);
         transfer.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-        root.addView(transfer);
+        transferPanel=column();transferPanel.setPadding(dp(20),dp(8),dp(20),dp(8));
+        transferPanel.setBackgroundColor(com.google.android.material.color.MaterialColors.getColor(this,com.google.android.material.R.attr.colorSurfaceContainer,android.graphics.Color.WHITE));
+        transferPanel.addView(transfer);
         transferProgress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);transferProgress.setMax(1000);
-        root.addView(transferProgress,new LinearLayout.LayoutParams(-1,dp(8)));
+        transferPanel.addView(transferProgress,new LinearLayout.LayoutParams(-1,dp(4)));
         LinearLayout transferActions=new LinearLayout(this);
         transferDetails=button(R.string.drive_transfer_open);
-        transferDetails.setOnClickListener(v->startActivity(new Intent(this,MainActivity.class)));
+        transferDetails.setOnClickListener(v->startActivity(new Intent(this,MainActivity.class).putExtra(MainActivity.EXTRA_TRANSFER,true)));
         transferActions.addView(transferDetails,new LinearLayout.LayoutParams(0,-2,1));
         cancelTransfer=button(R.string.drive_cancel_transfer);
         cancelTransfer.setOnClickListener(v->{
@@ -303,13 +311,15 @@ public final class DriveActivity extends AppCompatActivity {
             catch(RuntimeException failed){message.setText(R.string.drive_cancel_failed);}
         });
         LinearLayout.LayoutParams cancelParams=new LinearLayout.LayoutParams(0,-2,1);cancelParams.setMarginStart(dp(8));
-        transferActions.addView(cancelTransfer,cancelParams);root.addView(transferActions);
+        transferActions.addView(cancelTransfer,cancelParams);transferPanel.addView(transferActions);
         transfer.setVisibility(View.GONE);transferProgress.setVisibility(View.GONE);transferDetails.setVisibility(View.GONE);cancelTransfer.setVisibility(View.GONE);
         fileList.addFooterView(footer, null, false);
         fileList.setAdapter(adapter);
-        fileList.setDivider(null);fileList.setClipToPadding(false);fileList.setPadding(dp(16),0,dp(8),dp(96));
+        fileList.setDivider(null);fileList.setClipToPadding(false);fileList.setPadding(dp(4),0,dp(4),dp(96));
         android.widget.FrameLayout content=new android.widget.FrameLayout(this);
         content.addView(fileList,new android.widget.FrameLayout.LayoutParams(-1,-1));
+        signInScroll=new android.widget.ScrollView(this);signInScroll.setFillViewport(true);signInScroll.addView(signInPanel);
+        content.addView(signInScroll,new android.widget.FrameLayout.LayoutParams(-1,-1));
         create=new com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton(this);
         create.setText(R.string.drive_create);create.setIconResource(R.drawable.ic_add);
         create.setContentDescription(getString(R.string.drive_create));
@@ -318,6 +328,7 @@ public final class DriveActivity extends AppCompatActivity {
         android.widget.FrameLayout.LayoutParams floating=new android.widget.FrameLayout.LayoutParams(-2,-2,Gravity.BOTTOM|Gravity.END);
         floating.setMargins(dp(16),dp(16),dp(16),dp(16));content.addView(create,floating);
         container.addView(content,new LinearLayout.LayoutParams(-1,0,1));
+        container.addView(transferPanel,new LinearLayout.LayoutParams(-1,-2));
         navigation=new com.google.android.material.bottomnavigation.BottomNavigationView(this);
         navigation.setLabelVisibilityMode(com.google.android.material.navigation.NavigationBarView.LABEL_VISIBILITY_LABELED);
         navigation.getMenu().add(0,101,0,R.string.drive_nav_home).setIcon(R.drawable.ic_home);
@@ -332,7 +343,7 @@ public final class DriveActivity extends AppCompatActivity {
         container.addView(navigation,new LinearLayout.LayoutParams(-1,-2));
         updateControls();
         if (DriveSession.INSTANCE.connected()) {if(editing)message.setText(R.string.drive_editing);else load(false);}
-        else message.setText(GoogleAuthorization.revoking.get() ? R.string.drive_revoking : R.string.drive_not_connected);
+        else message.setText(GoogleAuthorization.revoking.get()?getString(R.string.drive_revoking):"");
         handleSettingsAction(getIntent());
     }
 
@@ -449,7 +460,7 @@ public final class DriveActivity extends AppCompatActivity {
         authorizing = false; waitingResolution = false;
         GoogleAuthorization.memory(this).interactiveFailed(authorizationTicket);
         observedRestore=GoogleAuthorization.memory(this).state();
-        message.setText(getString(R.string.auth_failure_with_build,reason,AppDiagnostics.buildLabel(this))); updateControls();
+        message.setText(reason); updateControls();
     }
 
     private void authStatusFailed(int code) {
@@ -494,9 +505,17 @@ public final class DriveActivity extends AppCompatActivity {
         editing=MutationCoordinator.INSTANCE.busy();
         wasConnected = DriveSession.INSTANCE.connected();
         wasRevoking = GoogleAuthorization.revoking.get();
+        signInScroll.setVisibility(wasConnected?View.GONE:View.VISIBLE);
+        fileList.setVisibility(wasConnected?View.VISIBLE:View.GONE);
+        pathPanel.setVisibility(wasConnected?View.VISIBLE:View.GONE);
+        navigation.setVisibility(wasConnected?View.VISIBLE:View.GONE);
         connect.setVisibility(wasConnected ? View.GONE : View.VISIBLE);
         connect.setEnabled(!authorizing && !wasRevoking);
         explanation.setVisibility(wasConnected ? View.GONE : View.VISIBLE);
+        boolean restoring=GoogleAuthorization.memory(this).state()==RememberedAuthorization.State.RESTORING;
+        signInTitle.setText(restoring?"正在恢复账户连接":authorizing?"正在连接 Google 账户":"连接你的 Google Drive");
+        explanation.setText(restoring?"已记住你的账户，正在恢复访问权限。":authorizing?"请在 Google 页面完成确认。":"浏览、预览和下载云盘文件。默认只读，按需开启文件管理。");
+        message.setVisibility(!wasConnected&&(restoring||authorizing)||message.getText().length()==0?View.GONE:View.VISIBLE);
         queryRow.setVisibility(wasConnected ? View.VISIBLE : View.GONE);
         if(navigation!=null) {
             changingNavigation=true;navigation.setSelectedItemId(currentView==DriveApi.View.RECENT?101:currentView==DriveApi.View.STARRED?102:currentView==DriveApi.View.SHARED?103:104);changingNavigation=false;
@@ -569,7 +588,7 @@ public final class DriveActivity extends AppCompatActivity {
                     }
                     nextPage = browser.next();
                     loading = false; adapter.notifyDataSetChanged(); updateControls();
-                    message.setText(files.isEmpty() ? getString(R.string.drive_empty) : getString(R.string.drive_file_count,files.size()));
+                    message.setText(files.isEmpty() ? getString(R.string.drive_empty) : "");
                     DiagnosticLog.get().record(DiagnosticLog.Event.LIST_DISPLAYED,logOperation,"www.googleapis.com",null,null,DiagnosticLog.elapsed(logStart),0,null);
                 });
             } catch (IOException error) {

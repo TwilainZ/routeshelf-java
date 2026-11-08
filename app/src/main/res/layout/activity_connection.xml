@@ -48,10 +48,14 @@
                 android:layout_width="wrap_content" android:layout_height="wrap_content" android:minHeight="48dp" android:textAllCaps="false" android:text="@string/connection_change_mode" />
             <com.google.android.material.button.MaterialButton android:id="@+id/connection_logs" style="@style/Widget.Material3.Button.TextButton"
                 android:layout_width="wrap_content" android:layout_height="wrap_content" android:minHeight="48dp" android:textAllCaps="false" android:text="@string/connection_view_logs" />
+            <com.google.android.material.button.MaterialButton android:id="@+id/connection_technical_toggle" style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content" android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/ui_technical_details" android:textAllCaps="false" />
+            <LinearLayout android:id="@+id/connection_technical_panel" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp"
                 android:text="@string/connection_evidence_note" android:textAppearance="?attr/textAppearanceBodySmall" android:textColor="?attr/colorOnSurfaceVariant" />
             <TextView android:id="@+id/connection_route_details" android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="12dp" android:textAppearance="?attr/textAppearanceBodySmall" android:textColor="?attr/colorOnSurfaceVariant" android:textIsSelectable="true" />
+            </LinearLayout>
         </LinearLayout>
     </ScrollView>
 </LinearLayout>

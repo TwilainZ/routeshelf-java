@@ -1,6 +1,6 @@
 # 关键代码导航
 
-客户端模块只有 `:app`。Android 入口留在 `dev.gdirect.lite`，内部代码按职责使用真实 Java 子包；对应测试保持相同分包。0.7.3 的设置页使用 AndroidX Preference；网络 TCP/TLS 流水线见 RouteProbeQueue。
+客户端模块只有 `:app`。公开下载表单在 [activity_transfers.xml](../app/src/main/res/layout/activity_transfers.xml)，布局与传输控制分离。Android 入口留在 `dev.gdirect.lite`，内部代码按职责使用真实 Java 子包；对应测试保持相同分包。0.7.3 的设置页使用 AndroidX Preference；网络 TCP/TLS 流水线见 RouteProbeQueue。
 
 ```text
 app/src/main/java/dev/gdirect/lite/

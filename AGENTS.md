@@ -10,7 +10,7 @@ Owner authorized Apache-2.0 for application-owned source after ownership review 
 
 ## Current product and verification truth
 
-0.7.5-status-preview/code 14 includes browsing/search/paging/sorting, shared drives/shortcuts, explicit opt-in file management/sharing/trash, native previews and exports, foreground uploads/downloads, and Material Drive-style navigation with a standalone unified SettingsActivity. See README, PRODUCT.md, DESIGN.md, docs/ACCEPTANCE.md and docs/DIRECT_NETWORK.md.
+0.8.0-ui-preview/code 15 includes browsing/search/paging/sorting, shared drives/shortcuts, explicit opt-in file management/sharing/trash, native previews and exports, foreground uploads/downloads, and Material Drive-style navigation with a standalone unified SettingsActivity. See README, PRODUCT.md, DESIGN.md, docs/ACCEPTANCE.md and docs/DIRECT_NETWORK.md.
 
 Network implementation: independent GTS-only trust store, normal/no-SNI/fixed g.cn TLS identity with logical Host separation, official non-Cloud IPv4 range filtering (a small attributed three-/24 bootstrap subset when the official catalog is unavailable), fast candidates before bounded expanded TCP discovery, up to eight verified IP/TLS combinations, explicit opt-in known relay, and checked media-only Google content redirects without credentials. Default remains Google-only. When relay consent exists, verify the fixed relay before blocking on official range/DNS discovery; successful preferred verification returns immediately, failure has a 5.5s/quarter-budget bound before Google fallback. Never silently enable relay consent. No arbitrary SNI, arbitrary relay, certificate forgery or trust-all fallback. Bundled public roots retain MPL-2.0, see docs/TRUST_ROOTS.md.
 

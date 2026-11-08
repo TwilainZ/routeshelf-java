@@ -16,7 +16,7 @@ public final class ConnectionText {
             if(!authorized)return "Google 线路已验证 · 账户未连接";
             if(status.download.state==ConnectionHealth.State.FAILED)return "云盘已连接 · 下载连接失败";
             if(status.download.state==ConnectionHealth.State.RESPONSE_ERROR)return "云盘已连接 · 下载访问需要处理";
-            return status.api.evidence==ConnectionHealth.Evidence.PROBE?"账户已授权 · 线路已验证":"云盘已连接 · 点击查看下载状态";
+            return status.api.evidence==ConnectionHealth.Evidence.PROBE?"账户已授权 · 线路已验证":"云盘已连接";
         }
         if(status.api.state==ConnectionHealth.State.STALE)return "连接状态需要重新确认";
         return authorized?"账户已授权 · 数据连接待检测":"Google 连接尚未检测";

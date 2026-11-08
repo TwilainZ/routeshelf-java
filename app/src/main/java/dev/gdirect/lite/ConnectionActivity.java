@@ -21,7 +21,7 @@ import java.util.concurrent.TimeUnit;
 /** A visible, read-only observation of the same application-owned routing/check state. */
 public final class ConnectionActivity extends AppCompatActivity {
     private final Handler handler=new Handler(Looper.getMainLooper());
-    private boolean visible;
+    private boolean visible,technicalExpanded;
     private TextView headline,phase,account,api,download,apiTime,downloadTime,mode,details;
     private MaterialButton check,connect;
     private LinearProgressIndicator progress;
@@ -48,6 +48,11 @@ public final class ConnectionActivity extends AppCompatActivity {
             .putExtra(SettingsActivity.EXTRA_ACCOUNT_ACTION,"connect")));
         findViewById(R.id.connection_settings).setOnClickListener(v->startActivity(new Intent(this,SettingsActivity.class).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)));
         findViewById(R.id.connection_logs).setOnClickListener(v->startActivity(new Intent(this,LogActivity.class)));
+        technicalExpanded=state!=null&&state.getBoolean("technical_expanded",false);
+        View technical=findViewById(R.id.connection_technical_panel);technical.setVisibility(technicalExpanded?View.VISIBLE:View.GONE);
+        MaterialButton toggle=findViewById(R.id.connection_technical_toggle);
+        toggle.setText(technicalExpanded?"收起技术详情":getString(R.string.ui_technical_details));
+        toggle.setOnClickListener(v->{technicalExpanded=!technicalExpanded;technical.setVisibility(technicalExpanded?View.VISIBLE:View.GONE);toggle.setText(technicalExpanded?"收起技术详情":getString(R.string.ui_technical_details));});
         render();
     }
     private String age(ConnectionHealth.Result result){
@@ -98,6 +103,7 @@ public final class ConnectionActivity extends AppCompatActivity {
         text(details,apiRoute+(apiRoute.isEmpty()||downloadRoute.isEmpty()?"":"\n")+downloadRoute);
         details.setVisibility(apiRoute.isEmpty()&&downloadRoute.isEmpty()?View.GONE:View.VISIBLE);
     }
+    @Override protected void onSaveInstanceState(Bundle state){state.putBoolean("technical_expanded",technicalExpanded);super.onSaveInstanceState(state);}
     @Override protected void onStart(){super.onStart();visible=true;handler.post(tick);}
     @Override protected void onStop(){visible=false;handler.removeCallbacks(tick);super.onStop();}
 }

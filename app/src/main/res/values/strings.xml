@@ -1,4 +1,18 @@
 <resources>
+    <string name="ui_transfers_title">下载与传输</string>
+    <string name="ui_public_file">通过链接下载</string>
+    <string name="ui_public_help">粘贴公开分享的 Google Drive 文件链接，无需登录。</string>
+    <string name="ui_file_link">文件链接</string>
+    <string name="ui_paste">粘贴链接</string>
+    <string name="ui_start_download">开始下载</string>
+    <string name="ui_advanced">高级选项</string>
+    <string name="ui_manual_ip">本次下载 IP（可选）</string>
+    <string name="ui_manual_help">留空自动连接。指定时仍验证 Google 范围与证书。</string>
+    <string name="ui_current_transfer">当前传输</string>
+    <string name="ui_cancel_transfer">停止传输</string>
+    <string name="ui_open_file">打开下载文件</string>
+    <string name="ui_download_location">文件保存在“下载/GDirect Lite”</string>
+    <string name="ui_technical_details">技术详情</string>
     <string name="connection_status_title">连接状态</string>
     <string name="connection_back">返回</string>
     <string name="connection_check">检测连接</string>
