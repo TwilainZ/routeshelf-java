@@ -7,7 +7,6 @@ import androidx.appcompat.app.AppCompatActivity;
 import android.content.ClipboardManager;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -16,22 +15,14 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
-import android.widget.ProgressBar;
-import android.widget.ScrollView;
-import android.widget.TextView;
 import android.widget.Toast;
-import java.util.Locale;
 
 public final class MainActivity extends AppCompatActivity {
     static final String EXTRA_SETTINGS="show_network_settings", EXTRA_TRANSFER="show_transfer";
     private LinearLayout manualPanel;
-    private ScrollView page;
-    private View transferSection;
     private EditText linkInput, ipInput;
     private com.google.android.material.textfield.TextInputLayout linkField,ipField;
-    private TextView status, progressLabel;
-    private ProgressBar progress;
-    private Button start, stop, open;
+    private Button start,viewTransfer;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private DownloadService.Snapshot last;
     private final Runnable ticker = new Runnable() {
@@ -59,14 +50,12 @@ public final class MainActivity extends AppCompatActivity {
         toolbar.getMenu().add(0,1,0,R.string.settings_title);
         toolbar.getMenu().add(0,2,1,R.string.connection_status_title);
         toolbar.setOnMenuItemClickListener(item->{startActivity(new Intent(this,item.getItemId()==1?SettingsActivity.class:ConnectionActivity.class));return true;});
-        page=findViewById(R.id.transfers_scroll);transferSection=findViewById(R.id.transfer_section);
         View content=findViewById(R.id.transfers_content);
         int side=Math.round((24+Math.max(0,(getResources().getConfiguration().screenWidthDp-600)/2))*getResources().getDisplayMetrics().density);
         content.setPadding(side,content.getPaddingTop(),side,content.getPaddingBottom());
         linkInput=findViewById(R.id.public_link);ipInput=findViewById(R.id.public_ip);manualPanel=findViewById(R.id.public_manual_panel);
         linkField=findViewById(R.id.public_link_field);ipField=findViewById(R.id.public_ip_field);
-        progress=findViewById(R.id.transfer_progress);progressLabel=findViewById(R.id.transfer_amount);status=findViewById(R.id.transfer_status);
-        start=findViewById(R.id.public_start);stop=findViewById(R.id.transfer_stop);open=findViewById(R.id.transfer_open);
+        start=findViewById(R.id.public_start);viewTransfer=findViewById(R.id.public_transfer_link);
         findViewById(R.id.public_paste).setOnClickListener(v->{
             ClipboardManager clipboard=(ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
             if(clipboard.hasPrimaryClip()&&clipboard.getPrimaryClip().getItemCount()>0){
@@ -77,8 +66,7 @@ public final class MainActivity extends AppCompatActivity {
         advanced.setOnClickListener(v->{boolean expanded=manualPanel.getVisibility()!=View.VISIBLE;manualPanel.setVisibility(expanded?View.VISIBLE:View.GONE);
             advanced.setText(expanded?"收起高级选项":getString(R.string.ui_advanced));if(!expanded)ipInput.setText("");});
         start.setOnClickListener(v->beginDownload());
-        stop.setOnClickListener(v->startService(new Intent(this,DownloadService.class).setAction(DownloadService.ACTION_STOP)));
-        open.setOnClickListener(v->openFile());
+        viewTransfer.setOnClickListener(v->startActivity(new Intent(this,TransferActivity.class)));
         linkInput.setText(savedInstanceState==null?getPreferences(MODE_PRIVATE).getString("link",""):savedInstanceState.getString("link_draft",""));
         if(savedInstanceState!=null&&savedInstanceState.getBoolean("manual_expanded")) {
             manualPanel.setVisibility(View.VISIBLE);advanced.setText("收起高级选项");ipInput.setText(savedInstanceState.getString("manual_ip",""));
@@ -97,7 +85,9 @@ public final class MainActivity extends AppCompatActivity {
         if(intent==null)return;
         if(intent.getBooleanExtra(EXTRA_SETTINGS,false)) {
             startActivity(new Intent(this,SettingsActivity.class));intent.removeExtra(EXTRA_SETTINGS);
-        }else if(intent.getBooleanExtra(EXTRA_TRANSFER,false))page.post(()->page.fullScroll(View.FOCUS_DOWN));
+        }else if(intent.getBooleanExtra(EXTRA_TRANSFER,false)) {
+            intent.removeExtra(EXTRA_TRANSFER);startActivity(new Intent(this,TransferActivity.class));
+        }
     }
     @Override protected void onSaveInstanceState(Bundle state) {
         if(linkInput==null){super.onSaveInstanceState(state);return;}
@@ -136,49 +126,19 @@ public final class MainActivity extends AppCompatActivity {
         intent.putExtra(DownloadService.EXTRA_URL, link);
         intent.putExtra(DownloadService.EXTRA_IP, ip);
         intent.putExtra(DownloadService.EXTRA_THREADS, workers);
-        try { startForegroundService(intent);page.post(()->page.fullScroll(View.FOCUS_DOWN)); }
-        catch (Exception ex) { status.setText("无法启动下载服务：" + ex.getMessage()); }
+        try { startForegroundService(intent);startActivity(new Intent(this,TransferActivity.class)); }
+        catch (Exception ex) { com.google.android.material.snackbar.Snackbar.make(findViewById(R.id.transfers_root),"无法启动下载服务，请重试。",com.google.android.material.snackbar.Snackbar.LENGTH_LONG).show(); }
     }
     private void showSnapshot() {
-        DownloadService.Snapshot s = DownloadService.snapshot;
-        if (last == s) return;
-        last = s;
-        transferSection.setVisibility(s==DownloadService.IDLE?View.GONE:View.VISIBLE);
-        status.setText(s.text);
-        progress.setIndeterminate(s.active&&s.total<=0);
-        progress.setVisibility(s.active?View.VISIBLE:View.GONE);
+        DownloadService.Snapshot s=DownloadService.snapshot;
+        if(last==s)return;last=s;
         start.setEnabled(!s.active);
-        stop.setEnabled(s.active);stop.setVisibility(s.active?View.VISIBLE:View.GONE);
-        open.setVisibility(s.savedUri != null ? View.VISIBLE : View.GONE);
-        if (s.total > 0) {
-            progress.setProgress((int)Math.min(1000, s.done * 1000 / s.total));
-            progressLabel.setText(String.format(Locale.ROOT, "%s / %s · %s/s · %d%%",
-                units(s.done), units(s.total), units(s.bytesPerSecond),
-                Math.min(100, s.done * 100 / s.total)));
-        } else {
-            progress.setProgress(0);
-            progressLabel.setText(s.active ? units(s.done) + " · " + units(s.bytesPerSecond) + "/s" : "等待下载");
-        }
-    }
-    private String units(long n) {
-        double d = n; String[] suffix = {"B", "KiB", "MiB", "GiB", "TiB"};
-        int unit = 0;
-        while (d >= 1024 && unit < suffix.length-1) { d /= 1024; unit++; }
-        return String.format(Locale.ROOT, unit == 0 ? "%.0f %s" : "%.1f %s", d, suffix[unit]);
-    }
-    private void openFile() {
-        DownloadService.Snapshot s = DownloadService.snapshot;
-        if (s.savedUri == null) return;
-        Intent i = new Intent(Intent.ACTION_VIEW);
-        i.setDataAndType(Uri.parse(s.savedUri), s.mime == null ? "*/*" : s.mime);
-        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        try { startActivity(Intent.createChooser(i, "打开文件")); }
-        catch (Exception ex) { Toast.makeText(this, "可在 下载/GDirect Lite 文件夹找到它", Toast.LENGTH_LONG).show(); }
+        viewTransfer.setVisibility(s==DownloadService.IDLE?View.GONE:View.VISIBLE);
     }
     @Override protected void onDestroy() {
         handler.removeCallbacks(ticker);
         super.onDestroy();
     }
-    @Override protected void onStart() { super.onStart(); if(status!=null)handler.post(ticker); }
+    @Override protected void onStart() { super.onStart(); if(start!=null)handler.post(ticker); }
     @Override protected void onStop() { handler.removeCallbacks(ticker); super.onStop(); }
 }

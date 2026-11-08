@@ -16,8 +16,8 @@ android {
         applicationId 'dev.gdirect.lite'
         minSdk 29
         targetSdk 35
-        versionCode 16
-        versionName '0.8.1-stability-preview'
+        versionCode 17
+        versionName '0.8.2-transfer-preview'
         buildConfigField 'String', 'REVISION', '"' + buildRevision + '"'
         resValue 'string', 'app_name', 'GDirect Lite'
     }

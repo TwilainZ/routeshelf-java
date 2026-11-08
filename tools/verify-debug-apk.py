@@ -30,8 +30,8 @@ def command(*parts):
 badging = command(args.aapt2, 'dump', 'badging', str(args.apk))
 package = re.search(r"package: name='([^']+)' versionCode='([^']+)' versionName='([^']+)'", badging)
 expected_package = 'dev.gdirect.lite.probe' if args.probe else ('dev.gdirect.lite.preview' if args.preview else 'dev.gdirect.lite')
-expected_version = '0.2.1-diagnostic-probe' if args.probe else '0.8.1-stability-preview'
-expected_code = '3' if args.probe else '16'
+expected_version = '0.2.1-diagnostic-probe' if args.probe else '0.8.2-transfer-preview'
+expected_code = '3' if args.probe else '17'
 if not package or package.groups() != (expected_package, expected_code, expected_version):
     raise SystemExit('APK package or diagnostic version does not match the expected build')
 if args.probe and re.search(r"uses-permission(?:-sdk-\d+)?: name='android.permission.INTERNET'", badging):
@@ -43,7 +43,7 @@ if '已取消授权；未连接 Google Drive' in resources:
     raise SystemExit('Old cancellation-only error message is still packaged in the APK')
 required_resources = ('probe_title', 'probe_explanation') if args.probe else (
     'build_identity', 'diagnostics_title', 'drive_auth_no_result', 'drive_auth_status',
-    'drive_nav_home', 'drive_create', 'ic_launcher_art', 'ic_launcher_monochrome', 'builtin_google_candidates', 'settings_title', 'settings_content', 'connection_logs', 'drive_restoring', 'drive_restore_required', 'connection_status_title', 'connection_indicator', 'connection_headline', 'ui_transfers_title', 'public_link_field', 'transfer_section')
+    'drive_nav_home', 'drive_create', 'ic_launcher_art', 'ic_launcher_monochrome', 'builtin_google_candidates', 'settings_title', 'settings_content', 'connection_logs', 'drive_restoring', 'drive_restore_required', 'connection_status_title', 'connection_indicator', 'connection_headline', 'ui_transfer_detail_title', 'public_link_field', 'transfer_detail_root', 'transfer_open', 'public_transfer_link')
 for resource in required_resources:
     if resource not in resources:
         raise SystemExit('Missing diagnostic resource: ' + resource)
@@ -63,7 +63,7 @@ with zipfile.ZipFile(args.apk) as apk:
     if not args.probe:
         required_code += ['Ldev/gdirect/lite/SettingsActivity;', 'Ldev/gdirect/lite/SettingsActivity$Preferences;',
                           'Landroidx/preference/PreferenceFragmentCompat;', 'Ldev/gdirect/lite/network/RouteProbeQueue;',
-                          'Ldev/gdirect/lite/network/NetworkPathTracker;', 'Ldev/gdirect/lite/auth/RememberedAuthorization;', 'Ldev/gdirect/lite/ConnectionActivity;',
+                          'Ldev/gdirect/lite/network/NetworkPathTracker;', 'Ldev/gdirect/lite/auth/RememberedAuthorization;', 'Ldev/gdirect/lite/ConnectionActivity;', 'Ldev/gdirect/lite/TransferActivity;', 'Ldev/gdirect/lite/ui/TransferText;',
                           'Ldev/gdirect/lite/network/ConnectionHealth;', 'Ldev/gdirect/lite/ui/ConnectionText;', 'Ldev/gdirect/lite/ui/NavigationSelection;', 'Ldev/gdirect/lite/network/ConnectionCheck;',
                           'Ldev/gdirect/lite/LogActivity;', 'Ldev/gdirect/lite/diagnostics/DiagnosticLog;', 'Ldev/gdirect/lite/diagnostics/DiagnosticLogStore;']
     if args.probe:

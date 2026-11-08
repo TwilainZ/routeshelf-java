@@ -204,7 +204,7 @@ public final class DownloadService extends Service {
     }
     private Notification notification() {
         Snapshot s = snapshot;
-        Intent open = new Intent(this, MainActivity.class);
+        Intent open = new Intent(this, TransferActivity.class);
         PendingIntent pending = PendingIntent.getActivity(this, 0, open,
             PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         Notification.Builder b = new Notification.Builder(this, CHANNEL)

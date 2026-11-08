@@ -303,7 +303,7 @@ public final class DriveActivity extends AppCompatActivity {
         transferPanel.addView(transferProgress,new LinearLayout.LayoutParams(-1,dp(4)));
         LinearLayout transferActions=new LinearLayout(this);
         transferDetails=button(R.string.drive_transfer_open);
-        transferDetails.setOnClickListener(v->startActivity(new Intent(this,MainActivity.class).putExtra(MainActivity.EXTRA_TRANSFER,true)));
+        transferDetails.setOnClickListener(v->startActivity(new Intent(this,TransferActivity.class)));
         transferActions.addView(transferDetails,new LinearLayout.LayoutParams(0,-2,1));
         cancelTransfer=button(R.string.drive_cancel_transfer);
         cancelTransfer.setOnClickListener(v->{
@@ -332,12 +332,10 @@ public final class DriveActivity extends AppCompatActivity {
         navigation=new com.google.android.material.bottomnavigation.BottomNavigationView(this);
         navigation.setLabelVisibilityMode(com.google.android.material.navigation.NavigationBarView.LABEL_VISIBILITY_LABELED);
         navigation.getMenu().add(0,101,0,R.string.drive_nav_home).setIcon(R.drawable.ic_home);
-        navigation.getMenu().add(0,102,1,R.string.drive_nav_starred).setIcon(R.drawable.ic_star);
-        navigation.getMenu().add(0,103,2,R.string.drive_nav_shared).setIcon(R.drawable.ic_people);
         navigation.getMenu().add(0,104,3,R.string.drive_nav_files).setIcon(R.drawable.ic_folder);
         navigation.setOnItemSelectedListener(item->{
             if(navigationSelection.isSyncing())return true;
-            navigate(item.getItemId()==101?DriveApi.View.RECENT:item.getItemId()==102?DriveApi.View.STARRED:item.getItemId()==103?DriveApi.View.SHARED:DriveApi.View.FOLDER);return true;
+            navigate(item.getItemId()==101?DriveApi.View.RECENT:DriveApi.View.FOLDER);return true;
         });
         navigation.setOnItemReselectedListener(item->{if(!navigationSelection.isSyncing()&&!loading&&!editing&&DriveSession.INSTANCE.connected())load(false);});
         container.addView(navigation,new LinearLayout.LayoutParams(-1,-2));
@@ -518,7 +516,7 @@ public final class DriveActivity extends AppCompatActivity {
         message.setVisibility(!wasConnected&&(restoring||authorizing)||message.getText().length()==0?View.GONE:View.VISIBLE);
         queryRow.setVisibility(wasConnected ? View.VISIBLE : View.GONE);
         if(navigation!=null) {
-            navigationSelection.sync(navigation.getSelectedItemId(),currentView==DriveApi.View.RECENT?101:currentView==DriveApi.View.STARRED?102:currentView==DriveApi.View.SHARED?103:104,navigation::setSelectedItemId);
+            navigationSelection.sync(navigation.getSelectedItemId(),currentView==DriveApi.View.RECENT?101:104,navigation::setSelectedItemId);
             for(int i=0;i<navigation.getMenu().size();i++)navigation.getMenu().getItem(i).setEnabled(wasConnected&&!editing&&!authorizing);
         }
         if(create!=null){create.setVisibility(wasConnected&&currentView==DriveApi.View.FOLDER?View.VISIBLE:View.GONE);create.setEnabled(!loading&&!editing&&!DownloadService.snapshot.active);}
@@ -919,7 +917,7 @@ public final class DriveActivity extends AppCompatActivity {
         if(item.getItemId()==13){startActivity(new Intent(this,MainActivity.class));return true;}
         if (item.getItemId() == android.R.id.home) { if(!activeSearch.isEmpty())clearSearch();else goUp(); return true; }
         if(item.getItemId()==6){load(false);return true;}
-        if(item.getItemId()==9){startActivity(new Intent(this,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT).putExtra(MainActivity.EXTRA_TRANSFER,true));return true;}
+        if(item.getItemId()==9){startActivity(new Intent(this,TransferActivity.class));return true;}
         if(item.getItemId()==10){
             new MaterialAlertDialogBuilder(this).setTitle(R.string.drive_sort)
                 .setSingleChoiceItems(R.array.drive_sorts,currentSort.ordinal(),(dialog,n)->{

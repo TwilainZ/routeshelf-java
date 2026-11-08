@@ -20,7 +20,7 @@
         android:theme="@style/MainTheme"
         android:usesCleartextTraffic="false"
         android:supportsRtl="true">
-        <activity android:name=".MainActivity" android:exported="true">
+        <activity android:name=".MainActivity" android:exported="true" android:windowSoftInputMode="stateAlwaysHidden">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -37,6 +37,7 @@
             android:foregroundServiceType="dataSync" />
         <activity android:name=".LogActivity" android:exported="false" android:theme="@style/MainTheme" />
         <activity android:name=".ConnectionActivity" android:exported="false" android:theme="@style/MainTheme" />
+        <activity android:name=".TransferActivity" android:exported="false" android:theme="@style/MainTheme" android:windowSoftInputMode="stateAlwaysHidden" />
         <activity android:name=".SettingsActivity" android:exported="false" android:theme="@style/MainTheme" />
         <activity android:name=".DriveActivity" android:exported="false" android:theme="@style/MainTheme"
             android:enableOnBackInvokedCallback="true" />

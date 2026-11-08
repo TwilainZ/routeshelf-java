@@ -1,5 +1,9 @@
 <resources>
-    <string name="ui_transfers_title">下载与传输</string>
+    <string name="ui_transfer_detail_title">传输详情</string>
+    <string name="ui_last_transfer">最近一次传输</string>
+    <string name="ui_transfer_empty">暂无传输任务</string>
+    <string name="ui_transfer_empty_help">从云盘选择文件下载，或通过公开链接开始下载。</string>
+    <string name="ui_open_file_unavailable">无法打开文件。请在系统“文件”应用的“下载/GDirect Lite”中查看。</string>
     <string name="ui_public_file">通过链接下载</string>
     <string name="ui_public_help">粘贴公开分享的 Google Drive 文件链接，无需登录。</string>
     <string name="ui_file_link">文件链接</string>
@@ -145,8 +149,6 @@
     <string name="licenses_previous">上一页</string>
     <string name="licenses_unavailable">暂时无法读取许可证声明，请查看仓库中的 THIRD_PARTY_NOTICES.md。</string>
     <string name="drive_nav_home">首页</string>
-    <string name="drive_nav_starred">星标</string>
-    <string name="drive_nav_shared">共享</string>
     <string name="drive_nav_files">文件</string>
     <string name="drive_create">新建</string>
     <string name="builtin_google_candidates">查看内置 Google IP 候选</string>
