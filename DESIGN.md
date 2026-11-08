@@ -27,3 +27,7 @@
 公开链接下载页采用 activity_transfers.xml 的 MaterialToolbar、TextInputLayout、TextInputEditText、LinearProgressIndicator 和按钮；不再使用手绘圆角卡片。顺序为链接输入、粘贴、主下载操作、高级项；已有任务时提供进入详情的文字按钮。高级 IP 只在展开时出现；表单不展示任务进度，默认不聚焦输入框或弹键盘。小屏和大字体允许表单滚动，大屏限制内容宽度。连接页基本状态直接展示，IP/TLS 与解释收在技术详情内。网络和授权控制器保持原职责，不因页面重排而重新建立连接。
 
 0.8.2 的传输详情采用独立 TransferActivity / activity_transfer_detail.xml：顶栏、当前或最近一次任务、状态、进度/大小和对应操作，直接进入，无链接输入框。完成下载主操作为“打开下载文件”，进行中提供停止；失败/停止显示已传输字节和日志入口，空状态提供公开链接入口。通知和浏览页的“查看传输”使用同一路径。只观察进程内任务，不伪造历史记录。维护者明确移除共享、星标底部目的地，保留两个 Material 导航项；这是本产品的明确简化选择。
+
+0.8.3 统一按钮与配色：共用 values/styles.xml 组件主题，日夜颜色分别在 values/colors.xml、values-night/colors.xml 定义。白色文件表面、浅灰蓝导航/搜索容器、蓝色主操作；导航选中态使用浅蓝 secondaryContainer，不再继承默认紫色。新建为 16dp 圆角浅蓝 Material Extended FAB。开始下载、打开文件、连接等主操作使用实心按钮；分页、重试、查看传输等次操作使用 Material 文字按钮；停止等适当保留描边。单个表单/详情的主按钮按内容宽度排布，不铺满页面。组件保留官方按下/禁用/波纹状态及 48dp 触摸目标，不自画按钮。
+
+颜色审查基于本地资源解析：日夜各 9 组正文/动作/容器文字组合均超过 4.5:1；主操作分别 6.39:1 / 7.50:1，导航容器文字 13.18:1 / 7.20:1。这是静态配色计算，新主题的实际设备截图与字体缩放仍待验收。参考 Google Material Android 1.13.0 [按钮](https://github.com/material-components/material-components-android/blob/1.13.0/docs/components/Button.md)和[底部导航](https://github.com/material-components/material-components-android/blob/1.13.0/docs/components/BottomNavigation.md)文档。

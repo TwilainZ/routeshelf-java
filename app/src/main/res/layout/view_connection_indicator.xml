@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <com.google.android.material.button.MaterialButton xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto" style="@style/Widget.Material3.Button.TextButton"
+    xmlns:app="http://schemas.android.com/apk/res-auto" style="@style/Widget.GDirect.Button.Text"
     android:id="@+id/connection_indicator" android:layout_width="match_parent" android:layout_height="wrap_content"
     android:minHeight="48dp" android:gravity="start|center_vertical" android:paddingStart="20dp" android:paddingEnd="20dp"
     android:textAllCaps="false" android:maxLines="2" app:icon="@drawable/ic_connection_next" app:iconGravity="end"

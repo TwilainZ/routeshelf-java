@@ -1,22 +1,90 @@
 <resources>
+    <!-- Complete semantic palette: widgets keep Material's pressed/disabled/ripple states. -->
     <style name="DriveTheme" parent="Theme.Material3.DayNight">
         <item name="android:fontFamily">sans-serif</item>
-        <item name="colorPrimary">#0B57D0</item>
-        <item name="colorOnPrimary">#FFFFFF</item>
-        <item name="colorPrimaryContainer">#D3E3FD</item>
-        <item name="colorOnPrimaryContainer">#041E49</item>
-        <item name="colorSecondary">#444746</item>
-        <item name="colorOnSecondary">#FFFFFF</item>
-        <item name="colorSurfaceContainer">#F0F4F9</item>
-        <item name="colorOutlineVariant">#C4C7C5</item>
-        <item name="colorSurface">#FFFFFF</item>
-        <item name="colorOnSurface">#1F1F1F</item>
-        <item name="colorOnSurfaceVariant">#444746</item>
-        <item name="android:windowLightStatusBar">true</item>
-        <item name="android:windowLightNavigationBar">true</item>
+        <item name="colorPrimary">@color/drive_primary</item>
+        <item name="colorOnPrimary">@color/drive_on_primary</item>
+        <item name="colorPrimaryContainer">@color/drive_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/drive_on_primary_container</item>
+        <item name="colorSecondary">@color/drive_secondary</item>
+        <item name="colorOnSecondary">@color/drive_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/drive_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/drive_on_secondary_container</item>
+        <item name="colorTertiary">@color/drive_tertiary</item>
+        <item name="colorOnTertiary">@color/drive_on_tertiary</item>
+        <item name="colorTertiaryContainer">@color/drive_tertiary_container</item>
+        <item name="colorOnTertiaryContainer">@color/drive_on_tertiary_container</item>
+        <item name="colorSurface">@color/drive_surface</item>
+        <item name="colorOnSurface">@color/drive_on_surface</item>
+        <item name="colorSurfaceVariant">@color/drive_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/drive_on_surface_variant</item>
+        <item name="colorSurfaceDim">@color/drive_surface_dim</item>
+        <item name="colorSurfaceBright">@color/drive_surface_bright</item>
+        <item name="colorSurfaceContainerLowest">@color/drive_surface_container_lowest</item>
+        <item name="colorSurfaceContainerLow">@color/drive_surface_container_low</item>
+        <item name="colorSurfaceContainer">@color/drive_surface_container</item>
+        <item name="colorSurfaceContainerHigh">@color/drive_surface_container_high</item>
+        <item name="colorSurfaceContainerHighest">@color/drive_surface_container_highest</item>
+        <item name="colorOutline">@color/drive_outline</item>
+        <item name="colorOutlineVariant">@color/drive_outline_variant</item>
+        <item name="colorError">@color/drive_error</item>
+        <item name="colorOnError">@color/drive_on_error</item>
+        <item name="colorErrorContainer">@color/drive_error_container</item>
+        <item name="colorOnErrorContainer">@color/drive_on_error_container</item>
+        <item name="colorSurfaceInverse">@color/drive_inverse_surface</item>
+        <item name="colorOnSurfaceInverse">@color/drive_inverse_on_surface</item>
+        <item name="colorPrimaryInverse">@color/drive_inverse_primary</item>
+        <item name="colorPrimaryFixed">@color/drive_primary_fixed</item>
+        <item name="colorPrimaryFixedDim">@color/drive_primary_fixed_dim</item>
+        <item name="colorOnPrimaryFixed">@color/drive_on_primary_fixed</item>
+        <item name="colorOnPrimaryFixedVariant">@color/drive_on_primary_fixed_variant</item>
+        <item name="colorSecondaryFixed">@color/drive_secondary_fixed</item>
+        <item name="colorSecondaryFixedDim">@color/drive_secondary_fixed_dim</item>
+        <item name="colorOnSecondaryFixed">@color/drive_on_secondary_fixed</item>
+        <item name="colorOnSecondaryFixedVariant">@color/drive_on_secondary_fixed_variant</item>
+        <item name="colorTertiaryFixed">@color/drive_tertiary_fixed</item>
+        <item name="colorTertiaryFixedDim">@color/drive_tertiary_fixed_dim</item>
+        <item name="colorOnTertiaryFixed">@color/drive_on_tertiary_fixed</item>
+        <item name="colorOnTertiaryFixedVariant">@color/drive_on_tertiary_fixed_variant</item>
+        <item name="android:colorBackground">@color/drive_surface</item>
+        <item name="android:windowBackground">@color/drive_surface</item>
+        <item name="android:windowLightStatusBar">@bool/drive_light_system_bars</item>
+        <item name="android:windowLightNavigationBar">@bool/drive_light_system_bars</item>
+        <item name="materialButtonStyle">@style/Widget.GDirect.Button</item>
+        <item name="materialButtonOutlinedStyle">@style/Widget.GDirect.Button.Outlined</item>
+        <item name="borderlessButtonStyle">@style/Widget.GDirect.Button.Text</item>
+        <item name="bottomNavigationStyle">@style/Widget.GDirect.Navigation</item>
+        <item name="extendedFloatingActionButtonStyle">@style/Widget.GDirect.NewFile</item>
     </style>
     <style name="MainTheme" parent="DriveTheme">
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
+    </style>
+    <style name="Widget.GDirect.Button" parent="Widget.Material3.Button">
+        <item name="android:minHeight">48dp</item>
+        <item name="android:textAllCaps">false</item>
+    </style>
+    <style name="Widget.GDirect.Button.Outlined" parent="Widget.Material3.Button.OutlinedButton">
+        <item name="android:minHeight">48dp</item>
+        <item name="android:textAllCaps">false</item>
+    </style>
+    <style name="Widget.GDirect.Button.Text" parent="Widget.Material3.Button.TextButton">
+        <item name="android:minHeight">48dp</item>
+        <item name="android:textAllCaps">false</item>
+    </style>
+    <style name="Widget.GDirect.Navigation" parent="Widget.Material3.BottomNavigationView">
+        <item name="backgroundTint">?attr/colorSurfaceContainer</item>
+        <item name="elevation">0dp</item>
+        <item name="itemActiveIndicatorStyle">@style/Widget.GDirect.Navigation.Indicator</item>
+    </style>
+    <style name="Widget.GDirect.Navigation.Indicator" parent="Widget.Material3.BottomNavigationView.ActiveIndicator">
+        <item name="android:color">?attr/colorSecondaryContainer</item>
+    </style>
+    <style name="Widget.GDirect.NewFile" parent="Widget.Material3.ExtendedFloatingActionButton.Icon.Primary">
+        <item name="shapeAppearance">@style/ShapeAppearance.GDirect.NewFile</item>
+    </style>
+    <style name="ShapeAppearance.GDirect.NewFile" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">16dp</item>
     </style>
 </resources>

@@ -166,7 +166,7 @@ public final class DriveActivity extends AppCompatActivity {
     }
     private Button button(int text) {
         Button view = text == R.string.drive_connect ? new MaterialButton(this)
-            : new MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle);
+            : new MaterialButton(this, null, androidx.appcompat.R.attr.borderlessButtonStyle);
         view.setText(text); view.setAllCaps(false); view.setMinHeight(dp(48));
         return view;
     }
@@ -232,7 +232,7 @@ public final class DriveActivity extends AppCompatActivity {
         signInPanel.addView(explanation);
         connect = button(R.string.drive_connect);
         connect.setOnClickListener(v -> authorize());
-        signInPanel.addView(connect, new LinearLayout.LayoutParams(-1,-2));
+        signInPanel.addView(connect, new LinearLayout.LayoutParams(-2,-2));
 
         queryRow = new LinearLayout(this);
         queryRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -249,6 +249,7 @@ public final class DriveActivity extends AppCompatActivity {
             startSearch(); return true;
         });
         searchField.setBoxBackgroundMode(TextInputLayout.BOX_BACKGROUND_FILLED);
+        searchField.setBoxBackgroundColor(com.google.android.material.color.MaterialColors.getColor(this,com.google.android.material.R.attr.colorSurfaceContainerHigh,android.graphics.Color.LTGRAY));
         searchField.setBoxCornerRadii(dp(28),dp(28),dp(28),dp(28));
         searchField.setBoxStrokeWidth(0);searchField.setBoxStrokeWidthFocused(0);
         searchField.setStartIconDrawable(R.drawable.ic_search);

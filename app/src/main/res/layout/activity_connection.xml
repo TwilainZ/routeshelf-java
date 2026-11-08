@@ -17,14 +17,14 @@
             <TextView android:id="@+id/connection_phase" android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="8dp" android:textAppearance="?attr/textAppearanceBodyMedium" android:textColor="?attr/colorOnSurfaceVariant" />
             <com.google.android.material.button.MaterialButton android:id="@+id/connection_check"
-                android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp"
+                android:layout_width="wrap_content" android:layout_gravity="end" android:layout_height="wrap_content" android:minHeight="48dp"
                 android:layout_marginTop="20dp" android:text="@string/connection_check" android:textAllCaps="false" />
             <com.google.android.material.divider.MaterialDivider android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:layout_marginBottom="20dp" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/connection_account"
                 android:textAppearance="?attr/textAppearanceTitleMedium" android:accessibilityHeading="true" />
             <TextView android:id="@+id/connection_account_value" android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="4dp" android:textAppearance="?attr/textAppearanceBodyMedium" android:textColor="?attr/colorOnSurfaceVariant" />
-            <com.google.android.material.button.MaterialButton android:id="@+id/connection_account_action" style="@style/Widget.Material3.Button.TextButton"
+            <com.google.android.material.button.MaterialButton android:id="@+id/connection_account_action" style="@style/Widget.GDirect.Button.Text"
                 android:layout_width="wrap_content" android:layout_height="wrap_content" android:minHeight="48dp" android:textAllCaps="false"
                 android:text="@string/drive_connect" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="20dp"
@@ -44,11 +44,11 @@
                 android:textAppearance="?attr/textAppearanceTitleMedium" android:accessibilityHeading="true" />
             <TextView android:id="@+id/connection_mode_value" android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="4dp" android:textAppearance="?attr/textAppearanceBodyMedium" android:textColor="?attr/colorOnSurfaceVariant" />
-            <com.google.android.material.button.MaterialButton android:id="@+id/connection_settings" style="@style/Widget.Material3.Button.TextButton"
+            <com.google.android.material.button.MaterialButton android:id="@+id/connection_settings" style="@style/Widget.GDirect.Button.Text"
                 android:layout_width="wrap_content" android:layout_height="wrap_content" android:minHeight="48dp" android:textAllCaps="false" android:text="@string/connection_change_mode" />
-            <com.google.android.material.button.MaterialButton android:id="@+id/connection_logs" style="@style/Widget.Material3.Button.TextButton"
+            <com.google.android.material.button.MaterialButton android:id="@+id/connection_logs" style="@style/Widget.GDirect.Button.Text"
                 android:layout_width="wrap_content" android:layout_height="wrap_content" android:minHeight="48dp" android:textAllCaps="false" android:text="@string/connection_view_logs" />
-            <com.google.android.material.button.MaterialButton android:id="@+id/connection_technical_toggle" style="@style/Widget.Material3.Button.TextButton"
+            <com.google.android.material.button.MaterialButton android:id="@+id/connection_technical_toggle" style="@style/Widget.GDirect.Button.Text"
                 android:layout_width="wrap_content" android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/ui_technical_details" android:textAllCaps="false" />
             <LinearLayout android:id="@+id/connection_technical_panel" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp"
