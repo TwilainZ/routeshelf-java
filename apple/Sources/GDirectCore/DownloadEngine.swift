@@ -67,14 +67,23 @@ private final class DownloadSink: @unchecked Sendable {
             // Public Google confirmation/quota HTML must never be saved as the file.
             if rejectHTML && value["content-type"]?.lowercased().hasPrefix("text/html") == true { throw CoreError.permission }
             guard value["content-encoding"] == nil || value["content-encoding"]?.lowercased() == "identity" else { throw CoreError.integrity }
+            var length: Int64?
+            if let header = value["content-length"] {
+                guard header.utf8.allSatisfy({ (48...57).contains($0) }),
+                      let parsed = Int64(header) else { throw CoreError.integrity }
+                length = parsed
+            }
             if value.status == 206 {
                 guard rangeStart > 0, let text=value["content-range"], let range=ByteRange.parse(text), range.start==rangeStart,
                       range.total == total, let old=etag, value["etag"]==old else { throw CoreError.integrity }
-                responseLength=range.end-range.start+1
+                let rangeLength = range.end - range.start + 1
+                guard length == nil || length == rangeLength else { throw CoreError.integrity }
+                responseLength = rangeLength
             } else {
-                if rangeStart > 0 { try file.truncate(atOffset: 0); try file.seek(toOffset: 0); received=0; rangeStart=0 }
-                let length=value["content-length"].flatMap(Int64.init)
-                guard length == nil || length! >= 0 else { throw CoreError.integrity }
+                if rangeStart > 0 {
+                    do { try restart() } catch { throw CoreError.unsafeFile }
+                    rangeStart = 0
+                }
                 if let expected, let length, expected != length { throw CoreError.integrity }
                 total=expected ?? length; responseLength=length
                 etag=ByteRange.strongETag(value["etag"])
@@ -87,7 +96,8 @@ private final class DownloadSink: @unchecked Sendable {
             guard Int64(bytes.count) <= Int64.max-received else { throw CoreError.integrity }
             if let total, Int64(bytes.count) > total-received { throw CoreError.integrity }
             if let length=responseLength, Int64(bytes.count) > length-responseBytes { throw CoreError.integrity }
-            try file.write(contentsOf: bytes); received += Int64(bytes.count); responseBytes += Int64(bytes.count)
+            do { try file.write(contentsOf: bytes) } catch { throw CoreError.unsafeFile }
+            received += Int64(bytes.count); responseBytes += Int64(bytes.count)
             progress(TransferProgress(received: received, total: total))
         }
     }
@@ -126,7 +136,7 @@ public struct DownloadEngine: Sendable {
         let temporary=directory.appendingPathComponent(".gdirect-\(UUID().uuidString).part"), file=try SafeFiles.exclusive(temporary)
         defer { try? file.close(); try? FileManager.default.removeItem(at: temporary) }
         let sink=DownloadSink(file:file,spec:spec,progress:progress)
-        for attempt in 0..<3 {
+        attempts: for attempt in 0..<3 {
             try spec.check(); try Task.checkCancellation()
             if sink.received>0 && (sink.etag==nil || sink.total==nil) { try sink.restart() }
             var url=spec.url, headers=spec.headers; var hops=0
@@ -141,11 +151,8 @@ public struct DownloadEngine: Sendable {
                         guard hops<4, let location=head["location"] else { throw CoreError.invalidURL }
                         url=try URLPolicy.contentRedirect(location,from:url); headers=[:]; hops+=1; continue
                     }
-                    try sink.finish(); try spec.check(); try file.synchronize()
-                    if let md5=spec.md5 { guard md5.count==32, try Digest.md5File(temporary,check:{try spec.check();try Task.checkCancellation()}).lowercased()==md5.lowercased() else { throw CoreError.integrity } }
-                    try Task.checkCancellation(); try spec.check(); try file.close()
-                    let destination=try SafeFiles.publish(temporary,directory:directory,name:spec.filename,check:{try spec.check();try Task.checkCancellation()})
-                    return DownloadResult(file:destination,bytes:sink.received)
+                    try sink.finish()
+                    break attempts
                 } catch {
                     try spec.check(); try Task.checkCancellation()
                     if error is CancellationError { throw error }
@@ -154,6 +161,17 @@ public struct DownloadEngine: Sendable {
                 }
             }
         }
-        throw CoreError.integrity
+        try spec.check(); try Task.checkCancellation()
+        try file.synchronize()
+        if let md5 = spec.md5 {
+            guard md5.count == 32, try Digest.md5File(temporary, check: {
+                try spec.check(); try Task.checkCancellation()
+            }).lowercased() == md5.lowercased() else { throw CoreError.integrity }
+        }
+        try file.close()
+        let destination = try SafeFiles.publish(temporary, directory: directory, name: spec.filename) {
+            try spec.check(); try Task.checkCancellation()
+        }
+        return DownloadResult(file: destination, bytes: sink.received)
     }
 }

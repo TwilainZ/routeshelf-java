@@ -51,36 +51,54 @@ public actor GoogleAccount: Credentials {
     }
     public func configured() -> Bool {configuration != nil}
     public func importConfiguration(_ data:Data) throws {
-        let value=try OAuthConfiguration.imported(data);try disconnect();configuration=value
-        try store.save(AccountRecord(configuration:value,refreshToken:nil))
+        let value = try OAuthConfiguration.imported(data)
+        try store.save(AccountRecord(configuration: value, refreshToken: nil))
+        invalidateSession()
+        configuration = value
     }
     public func oauthConfiguration() throws -> OAuthConfiguration {guard let configuration else{throw CoreError.invalidOAuth};return configuration}
     public func install(_ value:OAuthTokens,configuration:OAuthConfiguration) throws {
+        try Task.checkCancellation()
         // Publish credentials only after Keychain persistence succeeds.
         try store.save(AccountRecord(configuration:configuration,refreshToken:value.refreshToken))
-        flag.cancel();flag=CancellationFlag();tokens=value;self.configuration=configuration
+        invalidateSession()
+        tokens = value; self.configuration = configuration
     }
     public func disconnect() throws {
-        flag.cancel();flag=CancellationFlag();refreshing?.cancel();refreshing=nil;tokens=nil
+        invalidateSession()
         // Forget credentials; preserve only the OAuth app configuration for the next explicit sign-in.
         if let configuration {try store.save(AccountRecord(configuration:configuration,refreshToken:nil))}
         else {try store.remove()}
     }
+    private func invalidateSession() {
+        flag.cancel(); flag = CancellationFlag()
+        refreshing?.cancel(); refreshing = nil; tokens = nil
+    }
     public func credential() async throws -> CredentialLease {
+        try Task.checkCancellation()
         if let tokens,tokens.expiresAt.timeIntervalSinceNow>60,!tokens.accessToken.isEmpty {return lease(tokens)}
         guard let refresh=tokens?.refreshToken,let configuration else{throw CoreError.authorization}
-        let oldFlag=flag
-        let task:Task<OAuthTokens,Error>
-        if let pending=refreshing {task=pending}
-        else {let transport=self.transport;task=Task {try await GoogleOAuth.refresh(refresh,configuration:configuration,transport:transport)};refreshing=task}
-        do {
-            let result=try await task.value;try oldFlag.check();try Task.checkCancellation()
-            try store.save(AccountRecord(configuration:configuration,refreshToken:result.refreshToken))
-            tokens=result;refreshing=nil;return lease(result)
-        } catch {try oldFlag.check();refreshing=nil;throw error}
+        let oldFlag = flag
+        let task: Task<OAuthTokens, Error>
+        if let pending = refreshing {
+            task = pending
+        } else {
+            task = Task {
+                defer { if flag === oldFlag { refreshing = nil } }
+                let result = try await GoogleOAuth.refresh(refresh, configuration: configuration, transport: transport)
+                try oldFlag.check()
+                try store.save(AccountRecord(configuration: configuration, refreshToken: result.refreshToken))
+                tokens = result
+                return result
+            }
+            refreshing = task
+        }
+        let result = try await task.value
+        try oldFlag.check()
+        return lease(result)
     }
     private func lease(_ tokens:OAuthTokens)->CredentialLease {
-        let current=flag;return CredentialLease(token:tokens.accessToken,check:current.check)
+        let current=flag;return CredentialLease(token:tokens.accessToken,check:{try current.check()})
     }
 }
 #endif

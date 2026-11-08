@@ -10,9 +10,17 @@ import GDirectApple
     init(){
         if ProcessInfo.processInfo.arguments.contains("--smoke-check") {
             do {
-                let roots=try CoreResources.data("gts-roots.pem")
-                guard Digest.sha256(roots).map({String(format:"%02x",$0)}).joined()=="6ba8f2f19e161f295a52b49e627796d7dbbeab3c7e60a46b07529e98e18536d7",
-                      CoreResources.bootstrap.candidates.count==6 else{throw CoreError.integrity}
+                _ = try CoreResources.trustedRoots()
+                _ = try CoreResources.data("gts-roots.LICENSE")
+                guard CoreResources.bootstrap.candidates.count == 6 else { throw CoreError.integrity }
+                if Bundle.main.bundleURL.pathExtension == "app" {
+                    for resource in ["AppIcon.icns", "LICENSE.txt", "NOTICE.txt"] {
+                        guard let directory = Bundle.main.resourceURL,
+                              try !Data(contentsOf: directory.appendingPathComponent(resource)).isEmpty else {
+                            throw CoreError.integrity
+                        }
+                    }
+                }
                 print("GDirect Lite bundle/resources verified");exit(0)
             }catch{fputs("Bundle resource verification failed\n",stderr);exit(1)}
         }
@@ -20,8 +28,8 @@ import GDirectApple
     var body:some Scene {
         WindowGroup("GDirect Lite") { BrowserView(model:model).frame(minWidth:780,minHeight:520) }
         .commands { CommandGroup(after:.newItem) {
-            Button("通过链接下载…"){model.showLink=true}.keyboardShortcut("l",modifiers:[.command,.shift])
-            Button("刷新"){model.reload()}.keyboardShortcut("r").disabled(!model.connected || model.loading)
+            Button("通过链接下载…"){model.showLink=true}.keyboardShortcut("l",modifiers:[.command,.shift]).disabled(model.transferActive)
+            Button("刷新"){model.reload()}.keyboardShortcut("r").disabled(!model.canRefresh)
         } }
         Settings { MacSettings(model:model).frame(width:560) }
     }
@@ -43,6 +51,7 @@ enum SidebarPage:String,CaseIterable,Identifiable {
     @Published var signingIn=false
     @Published var configured=false
     @Published var checking=false
+    @Published private(set) var configuringMode = false
     @Published var nextPage:String?
     @Published var showLink=false
     @Published var link=""
@@ -64,20 +73,26 @@ enum SidebarPage:String,CaseIterable,Identifiable {
     @Published private(set) var folder="root"
     @Published private(set) var folderName="我的云盘"
     private var generation=0
+    private var submittedQuery = ""
     private var transferID=UUID()
     private var listTask:Task<Void,Never>?,transferTask:Task<Void,Never>?,signInTask:Task<Void,Never>?
+    private var connectionTask: Task<Void, Never>?
     var canGoBack:Bool{!history.isEmpty}
+    var canRefresh: Bool { connected && !loading && !configuringMode && (page == .files || page == .recent) }
+    var canChangeMode: Bool { !checking && !transferActive && !signingIn && !configuringMode }
+    private var dataTransport: any HTTPTransport { demo ? DemoDrive() : transport }
+    private var drive: DriveClient {
+        DriveClient(transport: dataTransport, credentials: demo ? DemoDrive() : account)
+    }
     var selectedFile:DriveFile?{files.first{$0.id==selection}}
     private var started=false
     let demo=ProcessInfo.processInfo.arguments.contains("--ui-smoke")
     func start(){
         guard !started else{return};started=true
         if demo {
-            connected=true;folderName="界面自测 · 示例文件";message="示例数据，无网络请求。"
-            let sample="""
-            {"files":[{"id":"demo_folder","name":"项目资料","mimeType":"application/vnd.google-apps.folder"},{"id":"demo_pdf","name":"连接与下载说明.pdf","mimeType":"application/pdf","size":"3245678","capabilities":{"canDownload":true}},{"id":"demo_doc","name":"会议记录","mimeType":"application/vnd.google-apps.document","capabilities":{"canDownload":true}}]}
-            """
-            files=(try? JSONDecoder().decode(DrivePage.self,from:Data(sample.utf8)).files) ?? [];return
+            connected = true
+            reload()
+            return
         }
         pathWatcher=NetworkWatcher(transport:transport)
         Task {
@@ -88,25 +103,26 @@ enum SidebarPage:String,CaseIterable,Identifiable {
     }
     func changePage(_ value:SidebarPage?){
         guard let value,page != value else{return};page=value
-        generation+=1;listTask?.cancel();loading=false;selection=nil;query="";nextPage=nil;files=[]
+        generation+=1;listTask?.cancel();loading=false;selection=nil;query="";submittedQuery="";nextPage=nil;files=[]
         if value == .files{folder="root";folderName="我的云盘";history=[]}
         if value == .files || value == .recent{reload()}
     }
     func importOAuth(){
-        guard !demo else{return}
+        guard !demo, !signingIn, !transferActive else{return}
         let panel=NSOpenPanel();panel.allowedContentTypes=[.json];panel.canChooseDirectories=false;panel.allowsMultipleSelection=false
         guard panel.runModal() == .OK,let url=panel.url else{return}
         Task {
             do {
                 let input=try FileHandle(forReadingFrom:url);defer{try? input.close()};let data=try input.read(upToCount:65536) ?? Data();guard data.count<65536 else{throw CoreError.invalidOAuth}
-                signInTask?.cancel();browserOAuth.cancel();transferTask?.cancel();generation+=1;listTask?.cancel()
-                try await account.importConfiguration(data);configured=true;connected=false;files=[];message="OAuth 配置已存入本机钥匙串，可以连接 Google。"
+                try await account.importConfiguration(data)
+                generation+=1;listTask?.cancel();loading=false;selection=nil;nextPage=nil
+                configured=true;connected=false;files=[];message="OAuth 配置已存入本机钥匙串，可以连接 Google。"
             }catch{message=error.localizedDescription}
         }
     }
     func connect(){
         guard !demo else{return}
-        guard !signingIn else{return};signingIn=true;message="请在系统浏览器完成 Google 授权。"
+        guard configured, !connected, !signingIn, !configuringMode else{return};signingIn=true;message="请在系统浏览器完成 Google 授权。"
         signInTask=Task {
             defer{signingIn=false}
             do {
@@ -118,25 +134,37 @@ enum SidebarPage:String,CaseIterable,Identifiable {
             catch{message=error.localizedDescription}
         }
     }
+    func cancelSignIn() { signInTask?.cancel() }
     func disconnect(){
         guard !demo else{return}
-        signInTask?.cancel();browserOAuth.cancel();transferTask?.cancel();listTask?.cancel();generation+=1
-        connected=false;loading=false;files=[];selection=nil;message="已断开，本机不再自动获取访问令牌。"
+        cancelSignIn();transferTask?.cancel();listTask?.cancel();generation+=1
+        connected=false;loading=false;files=[];selection=nil;nextPage=nil;message="已断开，本机不再自动获取访问令牌。"
         Task{do{try await account.disconnect()}catch{message="清除钥匙串连接失败，请在钥匙串访问中检查应用记录。"}}
     }
     func reload(append:Bool=false){
-        guard !demo,connected,page == .files || page == .recent else{return}
+        guard connected, !configuringMode, page == .files || page == .recent else { return }
+        if append {
+            guard !loading, nextPage != nil else { return }
+        } else {
+            submittedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            files = []; selection = nil; nextPage = nil
+        }
         generation+=1;let ticket=generation;listTask?.cancel();loading=true;message=""
-        let scope:DriveScope=page == .recent ? .recent : .folder(folder),search=query,token=append ? nextPage : nil
-        if !append{selection=nil}
+        let scope: DriveScope = page == .recent ? .recent : .folder(folder)
+        let search = submittedQuery, token = append ? nextPage : nil
         listTask=Task {
             defer{if ticket==generation{loading=false}}
             do {
-                let result=try await DriveClient(transport:transport,credentials:account).list(scope:scope,search:search,page:token)
+                let result=try await drive.list(scope:scope,search:search,page:token)
                 try Task.checkCancellation();guard ticket==generation else{return}
                 if append{let existing=Set(files.map(\.id));files+=result.files.filter{!existing.contains($0.id)}}else{files=result.files}
                 nextPage=result.nextPageToken
-                let status=await transport.snapshot();routeDescription=Self.describe(status);lastVerification=status.verifiedAt;connectionStatus="云盘服务已响应。"
+                if !demo {
+                    let status = await transport.snapshot()
+                    guard ticket == generation else { return }
+                    routeDescription = Self.describe(status); lastVerification = status.verifiedAt
+                    connectionStatus = "云盘服务已响应。"
+                }
             }catch is CancellationError{}
             catch{if ticket==generation{message=error.localizedDescription;if error as? CoreError == .authorization{connected=false}}}
         }
@@ -149,28 +177,35 @@ enum SidebarPage:String,CaseIterable,Identifiable {
     }
     func back(){guard let last=history.popLast() else{return};folder=last.0;folderName=last.1;query="";reload()}
     func download(_ file:DriveFile){
-        guard !demo else{message="界面自测不执行网络请求。";return}
-        guard !transferActive,file.canDownload,let directory=chooseDirectory() else{return}
-        let transport=self.transport,account=self.account
-        beginTransfer(directory:directory){try await DriveClient(transport:transport,credentials:account).media(file)}
+        guard !transferActive, !configuringMode, file.canDownload else { return }
+        do {
+            guard let directory = try chooseDirectory() else { return }
+            let drive = self.drive
+            beginTransfer(directory: directory) { try await drive.media(file) }
+        } catch { message = error.localizedDescription }
     }
     func publicDownload(){
-        guard !demo else{linkError="界面自测不执行网络请求。";return}
+        guard !transferActive, !configuringMode else { return }
         linkError=""
         do {
-            let spec=try DriveClient.publicMedia(link:link);guard !transferActive,let directory=chooseDirectory() else{return}
+            let spec=try DriveClient.publicMedia(link:link);guard let directory=try chooseDirectory() else{return}
             showLink=false;beginTransfer(directory:directory){spec}
         }catch{linkError=error.localizedDescription}
     }
-    private func chooseDirectory()->URL?{
+    private func chooseDirectory() throws -> URL? {
+        if demo {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent("GDirect-Lite-UI-Smoke")
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            return directory
+        }
         let panel=NSOpenPanel();panel.canChooseDirectories=true;panel.canChooseFiles=false;panel.canCreateDirectories=true
         panel.prompt="保存到此文件夹";panel.directoryURL=FileManager.default.urls(for:.downloadsDirectory,in:.userDomainMask).first
         return panel.runModal() == .OK ? panel.url : nil
     }
     private func beginTransfer(directory:URL,spec:@escaping @Sendable () async throws->DownloadSpec){
         transferID=UUID();let ticket=transferID
-        transferActive=true;savedFile=nil;progress=nil;transferStatus="正在准备下载…";page = .transfers
-        let transport=self.transport
+        transferActive=true;savedFile=nil;progress=nil;transferStatus="正在准备下载…";changePage(.transfers)
+        let transport=dataTransport
         transferTask=Task {
             defer{transferActive=false}
             do {
@@ -191,20 +226,45 @@ enum SidebarPage:String,CaseIterable,Identifiable {
     func stopTransfer(){transferTask?.cancel()}
     func reveal(){if let savedFile{NSWorkspace.shared.activateFileViewerSelecting([savedFile])}}
     func openSaved(){if let savedFile{NSWorkspace.shared.open(savedFile)}}
-    func changeMode(_ value:ConnectionMode){
-        guard !transferActive else{message="请先停止传输，再切换连接方式。";return}
-        mode=value;connectionStatus="连接方式已切换，等待重新检测。";routeDescription="";lastVerification=nil
-        listTask?.cancel();generation+=1;loading=false;Task{await transport.configure(value)}
-    }
-    func checkConnection(){
-        guard !demo else{connectionStatus="界面自测不执行网络请求。";return}
-        guard !checking,!transferActive else{return};checking=true;connectionStatus="正在验证 Google 云盘线路…"
+    func changeMode(_ value: ConnectionMode) {
+        guard canChangeMode, mode != value else { return }
+        mode = value; routeDescription = ""; lastVerification = nil
+        if demo {
+            connectionStatus = "示例模式已切换。没有发起网络请求。"
+            return
+        }
+        connectionStatus = "连接方式已切换，等待重新检测。"
+        configuringMode = true
+        listTask?.cancel(); generation += 1; loading = false
         Task {
-            defer{checking=false}
-            do{await transport.updateRanges();try await transport.checkAPI();let status=await transport.snapshot();routeDescription=Self.describe(status);lastVerification=status.verifiedAt;connectionStatus="云盘线路已验证。此结果不代表文件已下载。"}
-            catch{connectionStatus=error.localizedDescription}
+            await transport.configure(value)
+            configuringMode = false
+            reload()
         }
     }
+    func checkConnection() {
+        guard canChangeMode else { return }
+        guard !demo else { connectionStatus = "界面自测不执行网络请求。"; return }
+        checking = true; connectionStatus = "正在验证 Google 云盘线路…"
+        routeDescription = ""; lastVerification = nil
+        connectionTask = Task {
+            defer { checking = false }
+            do {
+                await transport.updateRanges()
+                try Task.checkCancellation()
+                try await transport.checkAPI()
+                let status = await transport.snapshot()
+                try Task.checkCancellation()
+                routeDescription = Self.describe(status); lastVerification = status.verifiedAt
+                connectionStatus = "云盘线路已验证。此结果不代表文件已下载。"
+            } catch is CancellationError {
+                connectionStatus = "已取消检测。"
+            } catch {
+                connectionStatus = error.localizedDescription
+            }
+        }
+    }
+    func cancelConnectionCheck() { connectionTask?.cancel() }
     static func describe(_ status:ConnectionSnapshot)->String{
         guard let route=status.route else{return status.mode == .system ? "系统网络" : "尚无已验证线路"}
         return "\(route.isRelay ? "已知第三方中转" : "Google 前端") · \(route.ip) · \(route.identity == .googleFront ? "g.cn TLS" : route.identity == .noSNI ? "无 SNI" : "标准 TLS")"
@@ -224,6 +284,11 @@ struct BrowserView:View {
                 .navigationTitle("GDirect Lite").navigationSplitViewColumnWidth(min:160,ideal:180,max:230)
         } detail: {
             VStack(alignment:.leading,spacing:0){
+                if model.demo {
+                    Label("界面自测 · 示例数据，下载仅写入临时目录", systemImage: "testtube.2")
+                        .font(.callout).padding().frame(maxWidth: .infinity, alignment: .leading)
+                        .background(.quaternary)
+                }
                 if !model.message.isEmpty{Text(model.message).font(.callout).textSelection(.enabled).padding().frame(maxWidth:.infinity,alignment:.leading).background(.quaternary)}
                 switch model.page ?? .files {
                 case .files,.recent:files
@@ -236,8 +301,8 @@ struct BrowserView:View {
                 if model.page == .files || model.page == .recent {
                     ToolbarItemGroup {
                         Button(action:model.back){Label("上一级",systemImage:"chevron.left")}.disabled(!model.canGoBack || model.page != .files)
-                        Button{model.reload() }label:{Label("刷新",systemImage:"arrow.clockwise")}.disabled(!model.connected || model.loading)
-                        Button{if let file=model.selectedFile{model.download(file)}}label:{Label("下载",systemImage:"arrow.down")}.disabled(model.selectedFile?.canDownload != true || model.transferActive)
+                        Button{model.reload() }label:{Label("刷新",systemImage:"arrow.clockwise")}.disabled(!model.canRefresh)
+                        Button{if let file=model.selectedFile{model.download(file)}}label:{Label("下载",systemImage:"arrow.down")}.disabled(model.selectedFile?.canDownload != true || model.transferActive || model.configuringMode)
                     }
                 }
                 ToolbarItem{Button{model.showLink=true}label:{Label("通过链接下载",systemImage:"link")}.disabled(model.transferActive)}
@@ -247,9 +312,12 @@ struct BrowserView:View {
         .sheet(isPresented:$model.showLink){VStack(alignment:.leading,spacing:16){
             Text("通过链接下载").font(.title2)
             TextField("公开的 Google Drive 文件链接",text:$model.link).textFieldStyle(.roundedBorder).frame(minWidth:430)
+            if model.demo {
+                Button("填入示例链接") { model.link = "https://drive.google.com/file/d/demo_quick/view" }
+            }
             if !model.linkError.isEmpty{Text(model.linkError).foregroundStyle(.red).font(.callout)}
             Text("需要 Google 确认或登录的公开链接可能无法直接下载。私人文件请先连接账户。 ").font(.caption).foregroundStyle(.secondary)
-            HStack{Button("取消"){model.showLink=false}.keyboardShortcut(.cancelAction);Spacer();Button("下载",action:model.publicDownload).buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(model.link.isEmpty || model.transferActive)}
+            HStack{Button("取消"){model.showLink=false}.keyboardShortcut(.cancelAction);Spacer();Button("下载",action:model.publicDownload).buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(model.link.isEmpty || model.transferActive || model.configuringMode)}
         }.padding(24)}
     }
     @ViewBuilder private var files:some View {
@@ -257,13 +325,22 @@ struct BrowserView:View {
             VStack(alignment:.leading,spacing:16){
                 Text("连接你的 Google Drive").font(.title2)
                 Text("默认只读。授权在系统浏览器完成，刷新凭据保存在本机钥匙串。").foregroundStyle(.secondary)
-                HStack{Button("导入 Google OAuth 配置…",action:model.importOAuth);Button(model.signingIn ? "正在连接…" : "连接 Google",action:model.connect).buttonStyle(.borderedProminent).disabled(!model.configured || model.signingIn)}
-                if model.signingIn{Button("取消连接"){model.disconnect()}}
+                HStack{Button("导入 Google OAuth 配置…",action:model.importOAuth).disabled(model.signingIn || model.transferActive);Button(model.signingIn ? "正在连接…" : "连接 Google",action:model.connect).buttonStyle(.borderedProminent).disabled(!model.configured || model.signingIn)}
+                if model.signingIn{Button("取消连接", action: model.cancelSignIn)}
                 Text("首次使用请在现有 Cloud 项目创建桌面 OAuth 客户端并导入下载的 JSON；Android 客户端继续保留。").font(.callout).foregroundStyle(.secondary)
             }.padding(28).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.topLeading)
         } else {
             VStack(spacing:0){
-                HStack{Image(systemName:"magnifyingglass").foregroundStyle(.secondary);TextField("在此范围搜索文件",text:$model.query).onSubmit{model.reload()};if model.loading{ProgressView().controlSize(.small)}}.padding()
+                HStack {
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary).accessibilityHidden(true)
+                    TextField("在此范围搜索文件", text: $model.query).onSubmit { model.reload() }
+                    if !model.query.isEmpty {
+                        Button { model.query = ""; model.reload() } label: {
+                            Label("清除搜索", systemImage: "xmark.circle.fill").labelStyle(.iconOnly)
+                        }.buttonStyle(.borderless)
+                    }
+                    if model.loading { ProgressView().controlSize(.small) }
+                }.padding()
                 Table(model.files,selection:$model.selection){
                     TableColumn("名称"){file in Label(file.name,systemImage:file.isFolder ? "folder" : "doc").lineLimit(1)}
                     TableColumn("大小"){file in Text(file.byteCount.map{ByteCountFormatter.string(fromByteCount:$0,countStyle:.file)} ?? "—").foregroundStyle(.secondary)}.width(min:80,ideal:100,max:140)
@@ -302,11 +379,15 @@ struct ConnectionView:View {
     var body:some View{
         Form {
             Section("连接状态"){
-                LabeledContent("账户",value:model.connected ? "已连接 · 只读" : "未连接")
+                LabeledContent("账户", value: model.demo ? "示例 · 只读" : model.connected ? "已连接 · 只读" : "未连接")
                 Text(model.connectionStatus).textSelection(.enabled)
                 if !model.routeDescription.isEmpty{Text(model.routeDescription).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)}
                 if let date=model.lastVerification{LabeledContent("最近验证"){Text(date,style:.relative)}}
-                Button(model.checking ? "正在检测…" : "检测连接",action:model.checkConnection).disabled(model.checking || model.transferActive)
+                if model.checking {
+                    Button("取消检测", action: model.cancelConnectionCheck)
+                } else {
+                    Button("检测连接", action: model.checkConnection).disabled(!model.canChangeMode)
+                }
             }
             modePicker
             Section{Text("授权页面仍由系统浏览器访问。选择 Google 前端不代表流量绕过设备 VPN；线路验证也不代表文件下载完成。").font(.callout).foregroundStyle(.secondary)}
@@ -316,7 +397,7 @@ struct ConnectionView:View {
         Section("数据连接方式"){
             Picker("连接方式",selection:Binding(get:{model.mode},set:{value in if value == .relayAllowed{model.relayConfirmation=true}else{model.changeMode(value)}})){
                 Text("仅 Google 前端").tag(ConnectionMode.googleOnly);Text("允许已知第三方中转").tag(ConnectionMode.relayAllowed);Text("系统网络").tag(ConnectionMode.system)
-            }.disabled(model.transferActive || model.checking)
+            }.disabled(!model.canChangeMode)
             Text("内置地址是待验证候选，会实时校验 Google 根证书和服务；不保证每个网络都可达。").font(.caption).foregroundStyle(.secondary)
         }.confirmationDialog("允许已知第三方中转？",isPresented:$model.relayConfirmation,titleVisibility:.visible){
             Button("允许"){model.changeMode(.relayAllowed)};Button("取消",role:.cancel){}
@@ -328,9 +409,18 @@ struct MacSettings:View {
     var body:some View{
         Form {
             Section("Google 账户"){
-                Text(model.connected ? "已连接 · 只读访问" : "未连接")
-                Button("导入桌面 OAuth JSON…",action:model.importOAuth).disabled(model.transferActive || model.signingIn)
-                if model.connected{Button("断开连接",action:model.disconnect)}else{Button("连接 Google",action:model.connect).disabled(!model.configured || model.signingIn)}
+                Text(model.demo ? "界面自测 · 示例账户" : model.connected ? "已连接 · 只读访问" : "未连接")
+                Button("导入桌面 OAuth JSON…", action: model.importOAuth)
+                    .disabled(model.demo || model.transferActive || model.signingIn)
+                if model.demo {
+                    Text("示例不会访问网络或钥匙串。").foregroundStyle(.secondary)
+                } else if model.connected {
+                    Button("断开连接", action: model.disconnect)
+                } else if model.signingIn {
+                    Button("取消连接", action: model.cancelSignIn)
+                } else {
+                    Button("连接 Google", action: model.connect).disabled(!model.configured || model.configuringMode)
+                }
                 Text("配置和刷新凭据只保存在本机钥匙串，不上传给开发者。断开仅清除本机连接，不代替 Google 账号中的撤销授权。").font(.caption).foregroundStyle(.secondary)
             }
             Section("关于"){

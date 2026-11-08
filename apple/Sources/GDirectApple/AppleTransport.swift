@@ -65,10 +65,10 @@ public struct AppleSocketTransport: HTTPTransport, @unchecked Sendable {
         // Each read has an idle limit; metadata additionally has a whole-request limit.
         do { try await withTaskCancellationHandler(operation:{
             let operation: @Sendable () async throws -> Void = {
-                try await withDeadline(8,cancel:box.expire) { try await ready(box,queue:queue) }
+                try await withDeadline(8,cancel:{box.expire()}) { try await ready(box,queue:queue) }
                 try Task.checkCancellation(); try request.guardCurrent() // after TLS, before any bearer/header
                 let bytes=try wireRequest(request)
-                try await withDeadline(20,cancel:box.expire) {
+                try await withDeadline(20,cancel:{box.expire()}) {
                     try await withCheckedThrowingContinuation { (continuation:CheckedContinuation<Void,Error>) in
                         box.connection.send(content:bytes,completion:.contentProcessed { error in
                             if let error { continuation.resume(throwing:error) } else { continuation.resume() }
@@ -78,7 +78,7 @@ public struct AppleSocketTransport: HTTPTransport, @unchecked Sendable {
                 var decoder=HTTPDecoder()
                 while !decoder.complete {
                     try Task.checkCancellation(); try request.guardCurrent()
-                    let result=try await withDeadline(25,cancel:box.expire) {
+                    let result=try await withDeadline(25,cancel:{box.expire()}) {
                         try await withCheckedThrowingContinuation { (continuation:CheckedContinuation<SocketRead,Error>) in
                             box.connection.receive(minimumIncompleteLength:1,maximumLength:65536) { data,_,end,error in
                                 if let error { continuation.resume(throwing:error) } else { continuation.resume(returning:SocketRead(data:data ?? Data(),end:end)) }
@@ -90,26 +90,42 @@ public struct AppleSocketTransport: HTTPTransport, @unchecked Sendable {
                 }
             }
             defer { box.cancel() }
-            if let deadline=request.deadline { try await withDeadline(deadline,cancel:box.expire,operation:operation) }
+            if let deadline=request.deadline { try await withDeadline(deadline,cancel:{box.expire()},operation:operation) }
             else { try await operation() }
-        },onCancel:box.cancel) }
+        },onCancel:{box.cancel()}) }
         catch {if Task.isCancelled{throw CancellationError()};if box.timedOut{throw CoreError.timeout};throw error}
     }
 }
 private struct SocketRead: Sendable { let data: Data; let end: Bool }
-private func ready(_ box: ConnectionBox,queue:DispatchQueue) async throws {
-    try await withCheckedThrowingContinuation { (continuation:CheckedContinuation<Void,Error>) in
-        var completed=false
-        box.connection.stateUpdateHandler={ state in
-            guard !completed else { return }
+
+final class OneShot<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Value, Error>?
+
+    init(_ continuation: CheckedContinuation<Value, Error>) { self.continuation = continuation }
+
+    func resume(with result: Result<Value, Error>) {
+        let callback = lock.withLock {
+            let callback = continuation
+            continuation = nil
+            return callback
+        }
+        callback?.resume(with: result)
+    }
+}
+
+private func ready(_ box: ConnectionBox, queue: DispatchQueue) async throws {
+    try await withCheckedThrowingContinuation { continuation in
+        let callback = OneShot<Void>(continuation)
+        box.connection.stateUpdateHandler = { state in
             switch state {
-            case .ready:completed=true; continuation.resume()
-            case .failed(let error):completed=true; continuation.resume(throwing:error)
-            case .cancelled:completed=true; continuation.resume(throwing:CancellationError())
-            default:break
+            case .ready: callback.resume(with: .success(()))
+            case .failed(let error): callback.resume(with: .failure(error))
+            case .cancelled: callback.resume(with: .failure(CancellationError()))
+            default: break
             }
         }
-        box.connection.start(queue:queue)
+        box.connection.start(queue: queue)
     }
 }
 private func wireRequest(_ request:HTTPRequest) throws -> Data {
@@ -124,13 +140,22 @@ private func wireRequest(_ request:HTTPRequest) throws -> Data {
 }
 
 private final class SessionDelegate: NSObject,URLSessionTaskDelegate,@unchecked Sendable {
-    let roots:[SecCertificate]
-    let check:@Sendable ()throws->Void
-    init(roots:[SecCertificate],check:@escaping @Sendable ()throws->Void){self.roots=roots;self.check=check}
+    let roots: [SecCertificate]
+    let host: String
+    let check: @Sendable () throws -> Void
+    init(roots: [SecCertificate], host: String, check: @escaping @Sendable () throws -> Void) {
+        self.roots = roots; self.host = host; self.check = check
+    }
     func urlSession(_ session:URLSession,task:URLSessionTask,willPerformHTTPRedirection response:HTTPURLResponse,newRequest request:URLRequest,completionHandler:@escaping (URLRequest?)->Void) { completionHandler(nil) }
-    func urlSession(_ session:URLSession,task:URLSessionTask,didReceive challenge:URLAuthenticationChallenge,completionHandler:@escaping (URLSession.AuthChallengeDisposition,URLCredential?)->Void){
-        guard challenge.protectionSpace.authenticationMethod==NSURLAuthenticationMethodServerTrust,
-              let trust=challenge.protectionSpace.serverTrust,URLPolicy.allowedHost(challenge.protectionSpace.host),
+    func urlSession(_ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge,
+                    completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        completionHandler(.cancelAuthenticationChallenge, nil)
+    }
+    func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge,
+                    completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+              challenge.protectionSpace.host.lowercased() == host.lowercased(),
+              let trust = challenge.protectionSpace.serverTrust,
               SecTrustSetAnchorCertificates(trust,roots as CFArray)==errSecSuccess,
               SecTrustSetAnchorCertificatesOnly(trust,true)==errSecSuccess,
               SecTrustSetPolicies(trust,SecPolicyCreateSSL(true,challenge.protectionSpace.host as CFString))==errSecSuccess,
@@ -147,12 +172,26 @@ public struct SystemTransport: HTTPTransport {
         let configuration=URLSessionConfiguration.ephemeral; configuration.httpCookieStorage=nil; configuration.urlCredentialStorage=nil;configuration.httpShouldSetCookies=false
         configuration.urlCache=nil; configuration.timeoutIntervalForRequest=25
         configuration.timeoutIntervalForResource=request.deadline ?? 86400
-        let delegate=SessionDelegate(roots:try AppleSocketTransport.certificates(CoreResources.trustedRoots()),check:request.guardCurrent)
+        let delegate=SessionDelegate(roots:try AppleSocketTransport.certificates(CoreResources.trustedRoots()),host: request.url.host!, check: request.guardCurrent)
         let session=URLSession(configuration:configuration,delegate:delegate,delegateQueue:nil)
         defer { session.invalidateAndCancel() }
         var native=URLRequest(url:request.url); native.httpMethod=request.method; native.httpBody=request.body.isEmpty ? nil : request.body
         for (key,value) in request.headers { native.setValue(value,forHTTPHeaderField:key) }
-        let (bytes,response)=try await session.bytes(for:native)
+        let bytes: URLSession.AsyncBytes, response: URLResponse
+        do {
+            (bytes, response) = try await session.bytes(for: native)
+        } catch let error as URLError {
+            try request.guardCurrent()
+            switch error.code {
+            case .secureConnectionFailed, .serverCertificateHasBadDate, .serverCertificateUntrusted,
+                 .serverCertificateHasUnknownRoot, .serverCertificateNotYetValid:
+                throw CoreError.secureConnection
+            case .timedOut:
+                throw CoreError.timeout
+            default:
+                throw error
+            }
+        }
         guard let response=response as? HTTPURLResponse else { throw CoreError.malformedHTTP }
         try request.guardCurrent()
         let headers=response.allHeaderFields.reduce(into:[String:String]()) { result,field in

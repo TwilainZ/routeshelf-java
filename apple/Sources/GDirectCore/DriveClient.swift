@@ -40,6 +40,25 @@ public struct DriveClient: Sendable {
     private let credentials: any Credentials
     private static let fields = "id,name,mimeType,size,modifiedTime,md5Checksum,resourceKey,capabilities/canDownload"
     public init(transport: any HTTPTransport, credentials: any Credentials) { self.transport=transport; self.credentials=credentials }
+    /// A credential-free service check. A verified rejection establishes API reachability only.
+    public static func verifyService(using transport: any HTTPTransport, deadline: TimeInterval = 12) async throws {
+        struct Rejection: Decodable {
+            struct Detail: Decodable { let code: Int; let status: String?; let message: String }
+            let error: Detail
+        }
+        let request = try HTTPRequest(
+            url: URL(string: "https://www.googleapis.com/drive/v3/files?pageSize=1&fields=files(id)")!,
+            deadline: deadline
+        )
+        let (head, body) = try await ResponseBuffer.read(request, using: transport, limit: 65536)
+        guard let rejection = try? JSONDecoder().decode(Rejection.self, from: body).error,
+              rejection.code == head.status else { throw CoreError.noRoute }
+        if head.status == 401, rejection.status == nil || rejection.status == "UNAUTHENTICATED" { return }
+        if head.status == 403, rejection.status == "PERMISSION_DENIED",
+           rejection.message.hasPrefix("Method doesn't allow unregistered callers") { return }
+        throw CoreError.noRoute
+    }
+
     public static func listURL(scope: DriveScope, search: String = "", page: String? = nil) throws -> URL {
         guard search.count <= 200, (page?.utf8.count ?? 0) < 8192 else { throw CoreError.invalidRequest }
         var query = "trashed = false"

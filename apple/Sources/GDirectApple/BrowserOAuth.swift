@@ -24,28 +24,36 @@ public final class BrowserOAuth:@unchecked Sendable {
     @MainActor public func signIn(configuration:OAuthConfiguration,transport:any HTTPTransport)async throws->OAuthTokens{
         try begin();defer{cancel()}
         return try await withTaskCancellationHandler(operation:{
-            let attempt=try OAuthAttempt(port:await start())
-            let callback=try await withDeadline(300,cancel:self.expire){try await self.wait(attempt:attempt,configuration:configuration)}
+            let port = try await withDeadline(8, cancel: { self.expire() }) { try await self.start() }
+            let attempt = try OAuthAttempt(port: port)
+            let callback=try await withDeadline(300,cancel:{self.expire()}){try await self.wait(attempt:attempt,configuration:configuration)}
             try Task.checkCancellation()
             return try await GoogleOAuth.exchange(attempt:attempt,code:attempt.code(from:callback),configuration:configuration,transport:transport)
-        },onCancel:cancel)
+        },onCancel:{ self.cancel() })
     }
     private func begin()throws{lock.lock();defer{lock.unlock()};guard !active else{throw CoreError.invalidOAuth};active=true}
     private func start()async throws->UInt16{
         let parameters=NWParameters.tcp;parameters.requiredLocalEndpoint = .hostPort(host:.ipv4(.loopback),port:.any)
-        let server=try NWListener(using:parameters);lock.lock();listener=server;lock.unlock()
-        server.newConnectionHandler={[weak self] socket in self?.accept(socket)}
-        return try await withCheckedThrowingContinuation{callback in
-            var finished=false
-            server.stateUpdateHandler={state in
-                guard !finished else{return}
-                switch state{
-                case .ready:finished=true;if let port=server.port{callback.resume(returning:port.rawValue)}else{callback.resume(throwing:CoreError.invalidOAuth)}
-                case .failed(let error):finished=true;callback.resume(throwing:error)
-                case .cancelled:finished=true;callback.resume(throwing:CancellationError())
-                default:break
+        let server = try NWListener(using: parameters)
+        guard lock.withLock({
+            guard active else { return false }
+            listener = server
+            return true
+        }) else { throw CancellationError() }
+        server.newConnectionHandler = { [weak self] socket in self?.accept(socket) }
+        return try await withCheckedThrowingContinuation { continuation in
+            let callback = OneShot<UInt16>(continuation)
+            server.stateUpdateHandler = { [weak server] state in
+                switch state {
+                case .ready:
+                    if let port = server?.port { callback.resume(with: .success(port.rawValue)) }
+                    else { callback.resume(with: .failure(CoreError.invalidOAuth)) }
+                case .failed(let error): callback.resume(with: .failure(error))
+                case .cancelled: callback.resume(with: .failure(CancellationError()))
+                default: break
                 }
-            };server.start(queue:queue)
+            }
+            server.start(queue: queue)
         }
     }
     private func wait(attempt:OAuthAttempt,configuration:OAuthConfiguration)async throws->URL{
@@ -53,7 +61,12 @@ public final class BrowserOAuth:@unchecked Sendable {
         return try await withCheckedThrowingContinuation{callback in
             lock.lock();guard active else{lock.unlock();callback.resume(throwing:CancellationError());return}
             expected=attempt;continuation=callback;lock.unlock()
-            Task{@MainActor in if !NSWorkspace.shared.open(attempt.authorizationURL(configuration:configuration)){self.terminate(CoreError.invalidOAuth)}}
+            Task { @MainActor in
+                guard self.lock.withLock({ self.continuation != nil }) else { return }
+                if !NSWorkspace.shared.open(attempt.authorizationURL(configuration: configuration)) {
+                    self.terminate(CoreError.invalidOAuth)
+                }
+            }
         }
     }
     private func accept(_ socket:NWConnection){

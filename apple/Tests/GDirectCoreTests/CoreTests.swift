@@ -113,6 +113,29 @@ final class SecurityTests:XCTestCase {
         for value in ["bytes 5-3/6","bytes 0-6/6","bytes -1-5/6","bytes 0-5/*"]{XCTAssertNil(ByteRange.parse(value))}
         XCTAssertEqual(ByteRange.strongETag("\"v1\""),"\"v1\"");XCTAssertNil(ByteRange.strongETag("W/\"v1\""))
     }
+    func testAnonymousDriveCheckRequiresAnExpectedGoogleRejection() async throws {
+        let cases = [
+            (401, #"{"error":{"code":401,"status":"UNAUTHENTICATED","message":"Missing credentials"}}"#, true),
+            (403, #"{"error":{"code":403,"status":"PERMISSION_DENIED","message":"Method doesn't allow unregistered callers"}}"#, true),
+            (403, #"{"error":{"code":403,"status":"PERMISSION_DENIED","message":"Rate limited"}}"#, false),
+            (401, #"{"error":{"code":403,"message":"Unexpected status"}}"#, false),
+            (403, "<html>Proxy error</html>", false)
+        ]
+        for (status, body, expected) in cases {
+            let transport = ScriptTransport([{ request, receive in
+                XCTAssertTrue(request.headers.isEmpty)
+                try receive(.head(HTTPHead(status: status)))
+                try receive(.body(Data(body.utf8)))
+            }])
+            do {
+                try await DriveClient.verifyService(using: transport)
+                XCTAssertTrue(expected)
+            } catch {
+                XCTAssertFalse(expected)
+                XCTAssertEqual(error as? CoreError, .noRoute)
+            }
+        }
+    }
     func testResourcesRemainAttributedAndPinned()throws{
         let roots=try CoreResources.data("gts-roots.pem")
         XCTAssertEqual(Digest.sha256(roots).map{String(format:"%02x",$0)}.joined(),"6ba8f2f19e161f295a52b49e627796d7dbbeab3c7e60a46b07529e98e18536d7")
@@ -205,6 +228,22 @@ final class DownloadTests:XCTestCase {
             let directory=try directory(),transport=ScriptTransport([{_,r in try r(.head(HTTPHead(status:200,headers:headers)))}])
             do{_ = try await DownloadEngine(transport:transport).download(spec(),directory:directory);XCTFail("Invalid content saved")}catch{}
             XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath:directory.path),[])
+        }
+    }
+    func testMalformedContentLengthCannotBecomeAnUnknownLengthDownload() async throws {
+        for header in ["invalid", "+6", "6, 6"] {
+            let output = try directory()
+            let transport = ScriptTransport([{ _, receive in
+                try receive(.head(HTTPHead(status: 200, headers: ["Content-Length": header])))
+                try receive(.body(Data("abcdef".utf8)))
+            }])
+            do {
+                _ = try await DownloadEngine(transport: transport).download(spec(size: nil), directory: output)
+                XCTFail("Accepted malformed Content-Length")
+            } catch {
+                XCTAssertEqual(error as? CoreError, .integrity)
+            }
+            XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: output.path), [])
         }
     }
     #if canImport(CryptoKit)

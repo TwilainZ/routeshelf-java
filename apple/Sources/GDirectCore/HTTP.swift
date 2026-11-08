@@ -1,7 +1,7 @@
 import Foundation
 
 public enum CoreError: Error, Equatable, LocalizedError {
-    case invalidURL, invalidRequest, malformedHTTP, responseTooLarge, timeout
+    case invalidURL, invalidRequest, malformedHTTP, responseTooLarge, timeout, secureConnection
     case authorization, permission, http(Int), integrity, unsafeFile, noRoute, invalidOAuth, unsupported
     public var errorDescription: String? {
         switch self {
@@ -9,6 +9,7 @@ public enum CoreError: Error, Equatable, LocalizedError {
         case .malformedHTTP: return "服务器响应不完整或格式无效。"
         case .responseTooLarge: return "服务器响应超过安全上限。"
         case .timeout: return "连接超时，请重试。"
+        case .secureConnection: return "无法建立通过 Google 证书校验的安全连接，请检查当前网络和系统代理。"
         case .authorization: return "请重新连接 Google 账户。"
         case .permission: return "Google 拒绝访问，请检查文件权限、Drive API 或配额。"
         case .http(let code): return "Google 服务返回 HTTP \(code)。"

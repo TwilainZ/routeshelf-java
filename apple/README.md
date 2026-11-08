@@ -36,7 +36,7 @@ JSON 中可能含有 Google 提供给公开桌面客户端的 client_secret；�
 
 普通身份/无 SNI 仍验证真实逻辑主机名；固定 g.cn 身份验证 g.cn，同时 HTTP Host 保持真实 Google 服务名，使用 HTTP/1.1。自有传输包括系统模式均只信任打包且哈希固定的四个 GTS 根，不合并用户/系统 CA；浏览器页面遵循浏览器自己的验证。TLS 后、发送凭据前及读取中检查会话/网络有效性。原生路由失败可换线，取消、磁盘或内容校验错误不把健康线路标为失败；不重放 OAuth POST。
 
-“允许已知中转”必须明确同意，183.56.143.147 会标为第三方。数据仍验证 Google TLS，但第三方能观察连接信息。固定端点/Google 前端也不代表绕过设备 VPN。服务匿名探测成功不等于真实文件下载完成。
+“允许已知中转”必须明确同意，183.56.143.147 会标为第三方。数据仍验证 Google TLS，但第三方能观察连接信息。固定端点/Google 前端也不代表绕过设备 VPN。匿名检测接受匹配的 Google 凭据缺失响应（401 或特定的未注册调用方 403），用于确认 Drive API 可达。账户授权和文件下载有各自的结果。
 
 ## 构建与交付
 
@@ -51,15 +51,15 @@ bash apple/tools/check.sh
 bash apple/tools/package-macos.sh
 ```
 
-[macOS 构建工作流](../.github/workflows/build-macos.yml)在 macos-15 实际运行核心和回环 TLS 测试，编译两种架构，验证签名/资源及安装目录中的启动自检，再上传工件。输出在 apple/build/distribution/完整提交/。每个工件包含 BUILD-IDENTITY.json 和 SHA256SUMS。编译结果以对应提交的 Actions 为准，Linux 成功不能代替 Mac 编译。
+打包脚本构建 Xcode 的通用 Release target，检查应用签名、两种架构及实际 App 中的资源。独立 App 位于 `apple/build/app/<完整提交>/`，ZIP、DMG、`BUILD-IDENTITY.json` 和 `SHA256SUMS` 位于 `apple/build/distribution/<完整提交>/`。[macOS 构建工作流](../.github/workflows/build-macos.yml)在 macos-15 使用同一入口并上传归档与清单。
 
-本轮为 **ad-hoc 开发预览签名，未 Apple 公证**；没有创建或丢弃永久 Apple 私钥。macOS 对从网络下载的预览可能要求用户在系统“隐私与安全性”中明确允许打开。正式公开分发需要所有者自己的 Developer ID 签名与公证，以获得稳定分发身份和钥匙串访问连续性；构建脚本没有关闭系统保护，也没有上传到 App Store。请不要将当前预览说成 Apple 已公证应用。
+每次打包的实际签名类型及公证状态以 `BUILD-IDENTITY.json` 为准。ad-hoc 和 Apple Development 用于本机开发。公开分发使用同一团队的 Developer ID Application 签名及公证，以维持稳定的分发和钥匙串身份。
 
 ### 在自己的 Mac/Xcode 构建与签名
 
-使用 Xcode 打开 `apple/Package.swift`，选择 `GDirectMac` / `My Mac` 可开发调试。若需要独立 App target 的 Signing & Capabilities 界面，应在本机补建引用这两个本地库的 Xcode App 工程；当前仓库仍以 Swift Package 和打包脚本为入口。
+在 Xcode 打开 [GDirectLite.xcodeproj](GDirectLite.xcodeproj)，选择共享 scheme **GDirectLite** 和 **My Mac**，按 Command-R 运行。App target 复用本地 Swift Package 的 GDirectCore、GDirectApple，以及同一套 GDirectMac 源码，默认可在无团队的情况下本机调试。需要团队时由所有者在 Xcode 的 Accounts 中登录，并在 App target 的 Signing & Capabilities 中选择自己的团队。交付签名由打包脚本根据本机钥匙串选择。
 
-打包脚本默认 `GDIRECT_MAC_SIGNING=auto`，只使用本机钥匙串已有的有效应用签名身份：优先 Developer ID Application，其次 Apple Development；有多个同类证书时要求用 `GDIRECT_MAC_SIGN_IDENTITY` 明确指定证书 SHA-1，避免自动选错团队。没有证书时明确记录 ad-hoc。设置 `GDIRECT_MAC_SIGNING=developer-id` 可要求正式身份，缺失时直接失败，绝不降级冒充正式签名。证书 SHA-1 是公开指纹，不是私钥。
+打包脚本默认 `GDIRECT_MAC_SIGNING=auto`，只使用本机钥匙串已有的有效应用签名身份：优先 Developer ID Application，其次 Apple Development；有多个同类证书时要求用 `GDIRECT_MAC_SIGN_IDENTITY` 明确指定证书 SHA-1，避免自动选错团队。没有证书时明确记录 ad-hoc。设置 `GDIRECT_MAC_SIGNING=developer-id` 可要求正式身份，缺失时直接失败，绝不降级冒充正式签名。证书 SHA-1 是公开指纹。选中的身份需要本机允许 `codesign` 使用对应私钥。若钥匙串访问仍受限，可显式用 `GDIRECT_MAC_SIGNING=ad-hoc` 构建本机预览。
 
 如已在本机通过 `xcrun notarytool store-credentials GDirectLite` 交互保存公证凭据，使用：
 
@@ -67,12 +67,12 @@ bash apple/tools/package-macos.sh
 GDIRECT_MAC_SIGNING=developer-id GDIRECT_MAC_NOTARY_PROFILE=GDirectLite bash apple/tools/package-macos.sh
 ```
 
-它会为 Developer ID 启用 hardened runtime/安全时间戳，等待 Apple 接受 App 与 DMG 公证、装订票据并验证。仅这些操作全部成功才在清单中标记 appleNotarized=true。CI 当前明确选择 ad-hoc；本地 Apple 身份与公证分支尚待具备证书的 Mac 实测，不宣称已经正式签名。脚本不创建、导出或上传任何私钥，也不要求重建 Android OAuth 客户端。
+Developer ID 分支为 App 启用 hardened runtime 和安全时间戳，并对 DMG 加时间戳签名。提供公证 profile 后，脚本等待 Apple 接受 App 与 DMG，装订票据并用 stapler 和 spctl 验证，然后在清单中标记 `appleNotarized: true`。CI 使用 ad-hoc，正式分支待具备 Developer ID 和公证 profile 的 Mac 实测。私钥由系统钥匙串管理。
 
 ## 验证边界
 
-本地 Linux 已执行共享核心测试，覆盖协议分帧、PKCE、安全跳转、续传/取消/防覆盖和选线状态。Mac 专有测试覆盖真实 TLS、主机名/根证书拒绝、发送前会话守卫及 MD5；需以 Mac 工作流的实际结果记录完成状态。真实账号、运营商网络、Mac 安装/钥匙串交互和 UI 触控仍需设备验收。
+2026-11-08 在 Apple Silicon、macOS 27.2、Xcode 27.2、Apple Swift 6.4.2 上运行 `apple/tools/check.sh`，通过共享核心、真实回环 TLS、签名身份选择和 Release 编译。修复了回环夹具在 XCTest 中同步等待子进程退出时的偶发停滞，并重复验证回环 TLS。两种 Release 架构的部署目标均为 macOS 13.0。
 
-工作流尝试从真正运行的 Mac App 截图；--ui-smoke 明确显示示例数据并禁止网络/钥匙串操作，不能作为真实账号证据。没有图形会话时截图步骤可单独失败，不掩盖必需的编译/测试失败。源码审查已经修复发现的编译与生命周期问题；截图未取得之前不标记视觉验收通过。
+正常启动已检查首次配置和系统文件选择器。应用以 `--ui-smoke` 启动时可操作标注的示例目录和搜索，使用真实下载核心向临时目录写入示例文件，也可中途停止慢速示例。已检查公开链接错误、连接方式确认和原生设置。离线自测全程隔离网络和钥匙串。带凭据的真实账号流程和各运营商网络仍待验收。
 
 证书许可见 Resources/gts-roots.LICENSE；其他归属见 [NOTICE](NOTICE)。

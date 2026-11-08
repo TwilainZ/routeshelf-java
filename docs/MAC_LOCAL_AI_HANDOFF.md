@@ -6,7 +6,7 @@
 
 目标：主要完善可复用 Swift 核心，并交付能在我 Mac 上运行的原生 macOS 应用。所有实现保持独立，禁止复制、翻译或导入 mizorewww/gdirect 的 GPL 实现、补丁或种子资产。保留现有许可归属和 GTS 证书许可。
 
-当前已有 GDirectCore、GDirectApple、GDirectMac 三个模块；包含只读 Drive API、PKCE 授权协议、钥匙串、Google 前端选线、下载/有条件续传和文件校验，以及薄 SwiftUI 界面。Linux 的 31 项核心测试及 6 项签名身份选择测试通过；这不是 Mac 编译证据。首次 Mac 原生编译发现的多变量 @Published 声明已修正，完整 Mac 编译、测试和打包仍需本机验证。当前没有独立 .xcodeproj。
+GDirectCore、GDirectApple 和 GDirectMac 保持独立职责。独立工程位于 `apple/GDirectLite.xcodeproj`，本机验证记录和构建入口见 [Apple README](../apple/README.md)。
 
 请按以下顺序完成：
 

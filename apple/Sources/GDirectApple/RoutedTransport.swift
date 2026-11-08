@@ -48,12 +48,16 @@ public actor RoutedTransport: HTTPTransport {
         for attempt in 0..<(request.method=="GET" ? 2 : 1) {
             try request.guardCurrent(); try Task.checkCancellation()
             let route=try await selector.select(host:request.url.host!,candidates:candidates,ranges:ranges,mode:selectedMode,excluded:excluded) { route in
-                let path=route.host=="www.googleapis.com" ? "/drive/v3/files?pageSize=1&fields=files(id)" : route.host=="oauth2.googleapis.com" ? "/token" : "/"
-                let probe=try HTTPRequest(url:URL(string:"https://\(route.host)\(path)")!,deadline:3)
-                let (head,data)=try await ResponseBuffer.read(probe,using:AppleSocketTransport(route:route),limit:65536)
-                if route.host=="www.googleapis.com" {
-                    guard head.status==401, (try? JSONSerialization.jsonObject(with:data)) != nil else { throw CoreError.noRoute }
-                } else { guard (200...499).contains(head.status), ![301,302,303,307,308].contains(head.status) else { throw CoreError.noRoute } }
+                let socket = try AppleSocketTransport(route: route)
+                if route.host == "www.googleapis.com" {
+                    try await DriveClient.verifyService(using: socket, deadline: 3)
+                } else {
+                    let path = route.host == "oauth2.googleapis.com" ? "/token" : "/"
+                    let probe = try HTTPRequest(url: URL(string: "https://\(route.host)\(path)")!, deadline: 3)
+                    let (head, _) = try await ResponseBuffer.read(probe, using: socket, limit: 65536)
+                    guard (200...499).contains(head.status), ![301, 302, 303, 307, 308].contains(head.status)
+                    else { throw CoreError.noRoute }
+                }
             }
             try request.guardCurrent(); try Task.checkCancellation()
             let response=ResponseMarker()
@@ -73,9 +77,7 @@ public actor RoutedTransport: HTTPTransport {
         }
     }
     public func checkAPI() async throws {
-        let request=try HTTPRequest(url:URL(string:"https://www.googleapis.com/drive/v3/files?pageSize=1&fields=files(id)")!)
-        let (head,_)=try await ResponseBuffer.read(request,using:self)
-        guard head.status==401 else { throw CoreError.noRoute }
+        try await DriveClient.verifyService(using: self)
     }
 }
 private final class ResponseMarker: @unchecked Sendable {
