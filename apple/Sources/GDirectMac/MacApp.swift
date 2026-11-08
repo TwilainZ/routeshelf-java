@@ -36,20 +36,33 @@ enum SidebarPage:String,CaseIterable,Identifiable {
     @Published private(set) var page:SidebarPage? = .files
     @Published var files:[DriveFile]=[]
     @Published var selection:DriveFile.ID?
-    @Published var query="",message="",connected=false,loading=false,signingIn=false,configured=false,checking=false
+    @Published var query=""
+    @Published var message=""
+    @Published var connected=false
+    @Published var loading=false
+    @Published var signingIn=false
+    @Published var configured=false
+    @Published var checking=false
     @Published var nextPage:String?
-    @Published var showLink=false,link="",linkError=""
+    @Published var showLink=false
+    @Published var link=""
+    @Published var linkError=""
     @Published var progress:TransferProgress?
-    @Published var transferStatus="暂无传输任务",transferActive=false,savedFile:URL?
+    @Published var transferStatus="暂无传输任务"
+    @Published var transferActive=false
+    @Published var savedFile:URL?
     @Published var mode:ConnectionMode = .googleOnly
-    @Published var connectionStatus="尚未检测",routeDescription="",lastVerification:Date?
+    @Published var connectionStatus="尚未检测"
+    @Published var routeDescription=""
+    @Published var lastVerification:Date?
     @Published var relayConfirmation=false
     let transport=RoutedTransport()
     lazy var account=GoogleAccount(transport:transport)
     private let browserOAuth=BrowserOAuth()
     private var pathWatcher:NetworkWatcher?
     private var history:[(String,String)]=[]
-    @Published private(set) var folder="root",folderName="我的云盘"
+    @Published private(set) var folder="root"
+    @Published private(set) var folderName="我的云盘"
     private var generation=0
     private var transferID=UUID()
     private var listTask:Task<Void,Never>?,transferTask:Task<Void,Never>?,signInTask:Task<Void,Never>?
