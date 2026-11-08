@@ -4,7 +4,7 @@
 
 独立开发的 Android Google Drive 客户端：浏览、预览、管理和传输文件，并自动寻找当前网络可用的数据连接。界面采用熟悉的 Material 搜索、底部导航和文件操作。
 
-**当前：0.8.0-ui-preview · Android 10+ · Java · 开发预览。** 非 Google 官方应用。功能思路受 mizorewww/gdirect 启发，未移植其源码、aria2 补丁、种子或界面资产。
+**当前：0.8.1-stability-preview · Android 10+ · Java · 开发预览。** 非 Google 官方应用。功能思路受 mizorewww/gdirect 启发，未移植其源码、aria2 补丁、种子或界面资产。
 
 [文档导航](docs/README.md) · [开发构建](docs/DEVELOPMENT.md) · [Google 配置](docs/GOOGLE_SETUP.md) · [验收清单](docs/ACCEPTANCE.md) · [更新记录](CHANGELOG.md)
 
@@ -24,6 +24,8 @@
 
 0.7.3 修正纯 Google 扫描截断、TCP 应答挤占验证，以及缓存线路失效后的 TLS 身份恢复。设置采用 AndroidX 官方列表与 Material 单选对话框；检测中切换方式会先停止旧检测，再保存新选择。
 
+0.8.1 修复目录加载成功后反复刷新，以及取消读取误淘汰健康线路的问题。目录元数据 GET 每次 HTTP 尝试增加 12 秒整体时限，不限制文件内容下载/导出或上传。
+
 出现连接慢或失败时，进入 **设置 → 连接日志与反馈**，复现后刷新，复制日志或保存 TXT 发来反馈。记录阶段耗时、选线和错误类型；日志只在本机保留最近 512 条，不含令牌、账户、文件名或私人链接。详见 [日志与反馈](docs/DIAGNOSTICS.md)。
 
 顶部搜索、底部“首页/星标/共享/文件”、类型图标与右下角“新建”组成主流程。文件范围标题可选择回收站等范围；菜单提供刷新、排序、公开链接下载、传输、连接状态和设置；账户权限、连接、下载偏好、隐私及诊断统一放在设置页。支持日夜主题及 Android 自适应/主题启动器图标。
@@ -32,7 +34,7 @@
 
 当前尚无公开稳定 Release。不要将 Actions 的离线检查器或随机主 debug 包当作可升级客户端。可交付预览必须通过固定签名打包器验证，并包含 APK-IDENTITY.json 和校验值。
 
-现有测试版身份为 `dev.gdirect.lite.preview`，证书固定在 [preview-signing.json](config/preview-signing.json)。本次版本码 15，可覆盖同签名测试版；与旧主包 `dev.gdirect.lite` 并存。维护者已报告完成 Google 配置，普通更新无需再注册 OAuth，也无需删除旧主版。新开发者的一次性配置见 [Google 设置](docs/GOOGLE_SETUP.md)。
+现有测试版身份为 `dev.gdirect.lite.preview`，证书固定在 [preview-signing.json](config/preview-signing.json)。本次版本码 16，可覆盖同签名测试版；与旧主包 `dev.gdirect.lite` 并存。维护者已报告完成 Google 配置，普通更新无需再注册 OAuth，也无需删除旧主版。新开发者的一次性配置见 [Google 设置](docs/GOOGLE_SETUP.md)。
 
 私钥不进入仓库、APK 或交付 ZIP。缺少原密钥时拒绝交付，不自动生成替代签名。CI 只有匹配的预览密钥 Secret 可用时才发布预览工件；目前未确认该项配置，没有密钥仍可完成源码检查。
 
@@ -47,7 +49,7 @@ bash tools/check.sh
 
 统一入口执行 Java 检查、debug/preview JVM 测试、编译和 Android Lint；不需要预览私钥。[GitHub Actions](.github/workflows/build-apk.yml) 使用同一入口。只有保留签名可用时才执行 [预览打包器](tools/build-preview-apk.sh)，核对实际包名、版本、提交、签名和根证书包。
 
-0.8.0 本地验证为每变体 182 项 JVM 测试、11 项独立检查及编译/Lint；真实回环 TLS 覆盖 SNI/Host、证书、凭据跳转和回退。**本版手机布局、真实账号和中国运营商网络仍未验收**，不以编译代替使用效果。
+0.8.1 本地验证为每变体 191 项 JVM 测试、11 项独立检查及编译/Lint；真实回环 TLS 覆盖 SNI/Host、证书、凭据跳转和回退。**本版手机布局、真实账号和中国运营商网络仍未验收**，不以编译代替使用效果。
 
 ## 目前的边界
 

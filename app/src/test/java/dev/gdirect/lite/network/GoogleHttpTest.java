@@ -31,6 +31,93 @@ import org.junit.Test;
 
 /** Real TLS over loopback with ephemeral fixture certificates; production trust is never disabled. */
 public final class GoogleHttpTest {
+    @Test public void metadataGetHasFiniteWholeCallAndSocketDeadlines()throws Exception {
+        try(Fixture f=new Fixture(HOST)){
+            f.server.enqueue(new MockResponse().setBody("{}"));
+            OkHttpClient client=f.client(DirectRoutes.TlsMode.NORMAL,true).newBuilder().addInterceptor(chain->{
+                assertEquals(5000,chain.connectTimeoutMillis());assertEquals(8000,chain.readTimeoutMillis());
+                assertEquals(TimeUnit.SECONDS.toNanos(12),chain.call().timeout().timeoutNanos());
+                return chain.proceed(chain.request());
+            }).build();
+            HttpsURLConnection c=GoogleHttp.open(new URL("https://"+HOST+":"+f.server.getPort()+"/drive/v3/files?fields=files(id)"),()->client,()->{});
+            try{assertEquals("{}",new String(c.getInputStream().readAllBytes(),java.nio.charset.StandardCharsets.UTF_8));}
+            finally{c.disconnect();}
+        }
+    }
+    @Test public void metadataDeadlineDoesNotLimitMediaExportsRangesOrWrites()throws Exception {
+        try(Fixture f=new Fixture(HOST)){
+            OkHttpClient client=f.client(DirectRoutes.TlsMode.NORMAL,true).newBuilder().addInterceptor(chain->{
+                assertEquals(10000,chain.connectTimeoutMillis());assertEquals(20000,chain.readTimeoutMillis());
+                assertEquals(0,chain.call().timeout().timeoutNanos());return chain.proceed(chain.request());
+            }).build();
+            String[] paths={"/drive/v3/files/id?alt=media","/drive/v3/files/id/export?mimeType=application/pdf",
+                "/drive/v3/files/id?alt=%6dedia","/drive/v3/files/id","/drive/v3/files/id"};
+            for(int i=0;i<paths.length;i++){
+                f.server.enqueue(new MockResponse().setBody("ok"));
+                HttpsURLConnection c=GoogleHttp.open(new URL("https://"+HOST+":"+f.server.getPort()+paths[i]),()->client,()->{});
+                if(i==3)c.setRequestProperty("Range","bytes=0-1");if(i==4)c.setRequestMethod("PATCH");
+                try{assertEquals("ok",new String(c.getInputStream().readAllBytes(),java.nio.charset.StandardCharsets.UTF_8));}
+                finally{c.disconnect();}
+            }
+        }
+    }
+    @Test public void existingStricterDeadlineTimesOutAndRetriesWithoutBeingCalledCancellation()throws Exception {
+        try(Fixture f=new Fixture(HOST)){
+            for(int i=0;i<2;i++)f.server.enqueue(new MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE));
+            OkHttpClient client=f.client(DirectRoutes.TlsMode.NORMAL,true).newBuilder().callTimeout(500,TimeUnit.MILLISECONDS).build();
+            AtomicInteger rejected=new AtomicInteger(),failures=new AtomicInteger(),cancellations=new AtomicInteger();
+            HttpsURLConnection c=GoogleHttp.open(new URL("https://"+HOST+":"+f.server.getPort()+"/drive/v3/files"),()->client,rejected::incrementAndGet,()->{},new GoogleHttp.Status(){
+                public void failed(Throwable e){assertTrue(e instanceof java.net.SocketTimeoutException);failures.incrementAndGet();}
+                public void cancelled(){cancellations.incrementAndGet();}
+            });
+            long began=System.nanoTime();
+            try{
+                assertThrows(java.net.SocketTimeoutException.class,c::getResponseCode);
+                assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-began)<4000);
+                assertEquals(2,rejected.get());assertEquals(1,failures.get());assertEquals(0,cancellations.get());
+            }finally{c.disconnect();}
+        }
+    }
+    @Test public void invalidatedAccountOrNetworkDuringBodyReadMustNotRejectItsRoute()throws Exception {
+        try(Fixture f=new Fixture(HOST)){
+            f.server.enqueue(new MockResponse().setBody("x".repeat(65536)).setSocketPolicy(SocketPolicy.DISCONNECT_DURING_RESPONSE_BODY));
+            OkHttpClient client=f.client(DirectRoutes.TlsMode.NORMAL,true);
+            AtomicInteger rejected=new AtomicInteger(),cancelled=new AtomicInteger();
+            java.util.concurrent.atomic.AtomicBoolean invalidated=new java.util.concurrent.atomic.AtomicBoolean();
+            HttpsURLConnection c=GoogleHttp.open(f.url(),()->client,rejected::incrementAndGet,()->{
+                if(invalidated.get())throw new java.net.SocketException("fixture network changed");
+            },new GoogleHttp.Status(){public void cancelled(){cancelled.incrementAndGet();}});
+            try{
+                assertEquals(200,c.getResponseCode());invalidated.set(true);
+                assertThrows(IOException.class,()->c.getInputStream().readAllBytes());
+                assertEquals(0,rejected.get());assertEquals(1,cancelled.get());
+            }finally{c.disconnect();}
+        }
+    }
+    @Test public void deadlineDuringResponseBodyIsARealTimeoutAndRejectsTheRoute()throws Exception {
+        try(Fixture f=new Fixture(HOST)){
+            f.server.enqueue(new MockResponse().setBody("delayed").setBodyDelay(2,TimeUnit.SECONDS));
+            OkHttpClient client=f.client(DirectRoutes.TlsMode.NORMAL,true).newBuilder().callTimeout(500,TimeUnit.MILLISECONDS).build();
+            AtomicInteger rejected=new AtomicInteger(),failed=new AtomicInteger(),cancelled=new AtomicInteger();
+            HttpsURLConnection c=GoogleHttp.open(new URL("https://"+HOST+":"+f.server.getPort()+"/drive/v3/files"),()->client,rejected::incrementAndGet,()->{},new GoogleHttp.Status(){
+                public void failed(Throwable e){assertTrue(e instanceof java.net.SocketTimeoutException);failed.incrementAndGet();}
+                public void cancelled(){cancelled.incrementAndGet();}
+            });
+            try{
+                assertEquals(200,c.getResponseCode());assertThrows(java.net.SocketTimeoutException.class,()->c.getInputStream().readAllBytes());
+                assertEquals(1,rejected.get());assertEquals(1,failed.get());assertEquals(0,cancelled.get());
+            }finally{c.disconnect();}
+        }
+    }
+    @Test public void cancellingAnOpenResponseBodyMustNotRejectItsHealthyRoute()throws Exception {
+        try(Fixture f=new Fixture(HOST)){
+            f.server.enqueue(new MockResponse().setBody("fixture-body").setBodyDelay(1,TimeUnit.SECONDS));
+            OkHttpClient client=f.client(DirectRoutes.TlsMode.NORMAL,true);AtomicInteger rejected=new AtomicInteger();
+            HttpsURLConnection c=GoogleHttp.open(f.url(),()->client,rejected::incrementAndGet);
+            assertEquals(200,c.getResponseCode());java.io.InputStream body=c.getInputStream();c.disconnect();
+            assertThrows(IOException.class,()->body.readAllBytes());assertEquals(0,rejected.get());
+        }
+    }
     @Test public void liveResponseUpdatesConnectionStatusWithoutExposingHeadersOrUrls()throws Exception {
         try(Fixture f=new Fixture(HOST)){
             ConnectionHealth health=new ConnectionHealth();health.online(true);ConnectionHealth.Ticket[] ticket={null};
@@ -58,13 +145,13 @@ public final class GoogleHttpTest {
         try(Fixture f=new Fixture(HOST)){
             ConnectionHealth health=new ConnectionHealth();health.online(true);ConnectionHealth.Ticket[] ticket={null};
             f.server.enqueue(new MockResponse().setBody("x".repeat(65536)).setSocketPolicy(SocketPolicy.DISCONNECT_DURING_RESPONSE_BODY));
-            OkHttpClient client=f.client(DirectRoutes.TlsMode.NORMAL,true);
-            HttpsURLConnection c=GoogleHttp.open(f.url(),()->client,()->{},()->{},new GoogleHttp.Status(){
+            OkHttpClient client=f.client(DirectRoutes.TlsMode.NORMAL,true);AtomicInteger rejected=new AtomicInteger();
+            HttpsURLConnection c=GoogleHttp.open(f.url(),()->client,rejected::incrementAndGet,()->{},new GoogleHttp.Status(){
                 public void started(){ticket[0]=health.begin(ConnectionHealth.Service.DOWNLOAD,health.generation());}
                 public void response(int code){health.response(ticket[0],code);}
                 public void failed(Throwable error){health.failed(ticket[0],ConnectionHealth.Problem.NETWORK);}
             });
-            try{assertEquals(200,c.getResponseCode());assertThrows(IOException.class,()->c.getInputStream().readAllBytes());assertEquals(ConnectionHealth.State.FAILED,health.snapshot().download.state);}
+            try{assertEquals(200,c.getResponseCode());assertThrows(IOException.class,()->c.getInputStream().readAllBytes());assertEquals(ConnectionHealth.State.FAILED,health.snapshot().download.state);assertEquals(1,rejected.get());}
             finally{c.disconnect();}
         }
     }

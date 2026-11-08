@@ -126,10 +126,36 @@ public final class GoogleHttp {
             requestStart=System.nanoTime();
             DiagnosticLog.get().record("GET".equals(method)?DiagnosticLog.Event.REQUEST_READ_BEGIN:DiagnosticLog.Event.REQUEST_WRITE_BEGIN,logOperation,url.getHost(),null,null,0,0,null);
             try{connectInternal();notifyStatus(()->status.response(response.code()));DiagnosticLog.get().record(DiagnosticLog.Event.REQUEST_RESPONSE,logOperation,url.getHost(),null,null,DiagnosticLog.elapsed(requestStart),response.code(),null);}
-            catch(IOException|RuntimeException error){reportStatus(error);DiagnosticLog.get().record(closed||Thread.currentThread().isInterrupted()?DiagnosticLog.Event.REQUEST_CANCELLED:DiagnosticLog.Event.REQUEST_FAILED,logOperation,url.getHost(),null,null,DiagnosticLog.elapsed(requestStart),0,error);throw error;}
+            catch(IOException|RuntimeException error){reportStatus(error);DiagnosticLog.get().record(isCancellation(error)?DiagnosticLog.Event.REQUEST_CANCELLED:DiagnosticLog.Event.REQUEST_FAILED,logOperation,url.getHost(),null,null,DiagnosticLog.elapsed(requestStart),0,error);throw error;}
         }
         private void notifyStatus(Runnable callback){try{callback.run();}catch(RuntimeException ignored){}}
-        private void reportStatus(Throwable error){notifyStatus(closed||Thread.currentThread().isInterrupted()?status::cancelled:()->status.failed(error));}
+        private boolean isCancellation(Throwable error){
+            return closed||Thread.currentThread().isInterrupted()
+                ||(error instanceof java.io.InterruptedIOException&&!(error instanceof java.net.SocketTimeoutException)
+                    &&(call==null||!call.isCanceled()));
+        }
+        private void reportStatus(Throwable error){notifyStatus(isCancellation(error)?status::cancelled:()->status.failed(error));}
+        private IOException callFailure(IOException error){
+            // OkHttp's whole-call deadline is InterruptedIOException, but it is a timeout,
+            // not user cancellation. Keep retry/status/log classification consistent.
+            if(!closed&&!Thread.currentThread().isInterrupted()&&call!=null&&call.isCanceled()
+                &&error instanceof java.io.InterruptedIOException&&!(error instanceof java.net.SocketTimeoutException)){
+                java.net.SocketTimeoutException timeout=new java.net.SocketTimeoutException("Google request deadline exceeded");
+                timeout.initCause(error);return timeout;
+            }
+            return error;
+        }
+        private IOException bodyFailure(IOException original){
+            IOException error=callFailure(original);
+            boolean cancelled=isCancellation(error);
+            if(!cancelled)try{guard.check();}catch(IOException stopped){cancelled=true;error=stopped;}
+            if(cancelled)notifyStatus(status::cancelled);
+            else {reportStatus(error);failed.run();}
+            DiagnosticLog.get().record(DiagnosticLog.Event.BODY_FAILED,logOperation,url.getHost(),null,null,
+                DiagnosticLog.elapsed(requestStart),0,cancelled?new java.io.InterruptedIOException():error);
+            return error;
+        }
+        private static int boundedTimeout(int configured,int maximum){return configured==0?maximum:Math.min(configured,maximum);}
         private void connectInternal()throws IOException {
             if (closed) throw new IOException("连接已关闭");
             if (response != null) return;
@@ -138,8 +164,17 @@ public final class GoogleHttp {
             int limit="GET".equals(method)?2:1;
             for (int attempt = 0; attempt < limit; attempt++) {
                 guard.check();
-                OkHttpClient client = clients.get().newBuilder().connectTimeout(getConnectTimeout(), TimeUnit.MILLISECONDS)
-                    .readTimeout(getReadTimeout(), TimeUnit.MILLISECONDS).writeTimeout(getReadTimeout(),TimeUnit.MILLISECONDS).retryOnConnectionFailure(false)
+                OkHttpClient source=clients.get();Request logical=request.build();
+                boolean metadata="GET".equals(method)&&logical.url().host().equals("www.googleapis.com")
+                    &&logical.url().encodedPath().startsWith("/drive/v3/")
+                    &&!logical.url().encodedPath().endsWith("/export")
+                    &&!logical.url().queryParameterValues("alt").contains("media")
+                    &&logical.header("Range")==null;
+                OkHttpClient client = source.newBuilder()
+                    .connectTimeout(metadata?boundedTimeout(getConnectTimeout(),5000):getConnectTimeout(),TimeUnit.MILLISECONDS)
+                    .readTimeout(metadata?boundedTimeout(getReadTimeout(),8000):getReadTimeout(),TimeUnit.MILLISECONDS)
+                    .callTimeout(metadata?boundedTimeout(source.callTimeoutMillis(),12000):source.callTimeoutMillis(),TimeUnit.MILLISECONDS)
+                    .writeTimeout(getReadTimeout(),TimeUnit.MILLISECONDS).retryOnConnectionFailure(false)
                     .followRedirects(false).followSslRedirects(false)
                     .addNetworkInterceptor(chain->{
                         // TLS/discovery may take seconds. Recheck immediately before HTTP headers/body.
@@ -153,8 +188,9 @@ public final class GoogleHttp {
                 if (closed || Thread.currentThread().isInterrupted()) { call.cancel(); throw new java.io.InterruptedIOException("连接已取消"); }
                 try {
                     response = call.execute(); connected = true; return;
-                } catch (IOException error) {
-                    if(Thread.currentThread().isInterrupted()||closed)throw error;
+                } catch (IOException original) {
+                    IOException error=callFailure(original);
+                    if(isCancellation(error))throw error;
                     // Account/policy cancellation does not mean the endpoint itself failed.
                     guard.check();failed.run();
                     if (attempt + 1 >= limit) throw error;
@@ -199,10 +235,10 @@ public final class GoogleHttp {
             if (response.code() >= 400) throw new IOException("HTTP " + response.code());
             return new java.io.FilterInputStream(response.body().byteStream()) {
                 @Override public int read() throws IOException {
-                    try { return in.read(); } catch (IOException error) { reportStatus(error);DiagnosticLog.get().record(DiagnosticLog.Event.BODY_FAILED,logOperation,url.getHost(),null,null,DiagnosticLog.elapsed(requestStart),0,error);failed.run(); throw error; }
+                    try { return in.read(); } catch (IOException error) { throw bodyFailure(error); }
                 }
                 @Override public int read(byte[] data,int offset,int count) throws IOException {
-                    try { return in.read(data,offset,count); } catch (IOException error) { reportStatus(error);DiagnosticLog.get().record(DiagnosticLog.Event.BODY_FAILED,logOperation,url.getHost(),null,null,DiagnosticLog.elapsed(requestStart),0,error);failed.run(); throw error; }
+                    try { return in.read(data,offset,count); } catch (IOException error) { throw bodyFailure(error); }
                 }
             };
         }

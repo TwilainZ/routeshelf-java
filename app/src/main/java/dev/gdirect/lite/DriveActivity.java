@@ -69,7 +69,7 @@ public final class DriveActivity extends AppCompatActivity {
     private android.widget.ScrollView signInScroll;
     private com.google.android.material.bottomnavigation.BottomNavigationView navigation;
     private com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton create;
-    private boolean changingNavigation;
+    private final dev.gdirect.lite.ui.NavigationSelection navigationSelection=new dev.gdirect.lite.ui.NavigationSelection();
     private ListView fileList;
     private EditText search;
     private TextInputLayout searchField;
@@ -336,10 +336,10 @@ public final class DriveActivity extends AppCompatActivity {
         navigation.getMenu().add(0,103,2,R.string.drive_nav_shared).setIcon(R.drawable.ic_people);
         navigation.getMenu().add(0,104,3,R.string.drive_nav_files).setIcon(R.drawable.ic_folder);
         navigation.setOnItemSelectedListener(item->{
-            if(changingNavigation)return true;
+            if(navigationSelection.isSyncing())return true;
             navigate(item.getItemId()==101?DriveApi.View.RECENT:item.getItemId()==102?DriveApi.View.STARRED:item.getItemId()==103?DriveApi.View.SHARED:DriveApi.View.FOLDER);return true;
         });
-        navigation.setOnItemReselectedListener(item->{if(!loading&&!editing&&DriveSession.INSTANCE.connected())load(false);});
+        navigation.setOnItemReselectedListener(item->{if(!navigationSelection.isSyncing()&&!loading&&!editing&&DriveSession.INSTANCE.connected())load(false);});
         container.addView(navigation,new LinearLayout.LayoutParams(-1,-2));
         updateControls();
         if (DriveSession.INSTANCE.connected()) {if(editing)message.setText(R.string.drive_editing);else load(false);}
@@ -518,7 +518,7 @@ public final class DriveActivity extends AppCompatActivity {
         message.setVisibility(!wasConnected&&(restoring||authorizing)||message.getText().length()==0?View.GONE:View.VISIBLE);
         queryRow.setVisibility(wasConnected ? View.VISIBLE : View.GONE);
         if(navigation!=null) {
-            changingNavigation=true;navigation.setSelectedItemId(currentView==DriveApi.View.RECENT?101:currentView==DriveApi.View.STARRED?102:currentView==DriveApi.View.SHARED?103:104);changingNavigation=false;
+            navigationSelection.sync(navigation.getSelectedItemId(),currentView==DriveApi.View.RECENT?101:currentView==DriveApi.View.STARRED?102:currentView==DriveApi.View.SHARED?103:104,navigation::setSelectedItemId);
             for(int i=0;i<navigation.getMenu().size();i++)navigation.getMenu().getItem(i).setEnabled(wasConnected&&!editing&&!authorizing);
         }
         if(create!=null){create.setVisibility(wasConnected&&currentView==DriveApi.View.FOLDER?View.VISIBLE:View.GONE);create.setEnabled(!loading&&!editing&&!DownloadService.snapshot.active);}

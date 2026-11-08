@@ -18,7 +18,7 @@ app/src/main/java/dev/gdirect/lite/
 ├── transfer/                 上传协议、范围/版本规则、完整性及线程关闭
 ├── diagnostics/              结构化日志、私有存储及安装诊断
 ├── preview/                  预览格式与大小规则
-└── ui/                       各入口共用的状态文案
+└── ui/                       状态文案、程序同步导航的事件隔离
 ```
 
 ## 网络连接先看这几处
@@ -30,7 +30,7 @@ app/src/main/java/dev/gdirect/lite/
 | 默认模式、明确同意的中转、范围准备、切网代次与 HTTP 工厂 | [GoogleNetwork](../app/src/main/java/dev/gdirect/lite/GoogleNetwork.java) |
 | 缓存、优先中转、有界发现、三种 TLS 模式、备用路线与取消 | [DirectRoutes](../app/src/main/java/dev/gdirect/lite/network/DirectRoutes.java) |
 | 有界 TCP → TLS 流水线与网络/VPN 路径变化 | [RouteProbeQueue](../app/src/main/java/dev/gdirect/lite/network/RouteProbeQueue.java) · [NetworkPathTracker](../app/src/main/java/dev/gdirect/lite/network/NetworkPathTracker.java) |
-| 固定 IP、g.cn 身份/真实 Host、HTTP 适配、发送前检查 | [GoogleHttp](../app/src/main/java/dev/gdirect/lite/network/GoogleHttp.java) |
+| 固定 IP、g.cn 身份/真实 Host、HTTP 适配、发送前检查、元数据时限及取消保护 | [GoogleHttp](../app/src/main/java/dev/gdirect/lite/network/GoogleHttp.java) |
 | Google 专用根与额外证书限制 | [GoogleTrust](../app/src/main/java/dev/gdirect/lite/network/GoogleTrust.java) · [GoogleCertificatePolicy](../app/src/main/java/dev/gdirect/lite/network/GoogleCertificatePolicy.java) |
 | 官方范围过滤、缓存与有限内置候选 | [GoogleAddressSpace](../app/src/main/java/dev/gdirect/lite/network/GoogleAddressSpace.java) · [GoogleRangeCatalog](../app/src/main/java/dev/gdirect/lite/network/GoogleRangeCatalog.java) · [GoogleBootstrap](../app/src/main/java/dev/gdirect/lite/network/GoogleBootstrap.java) |
 | 加密 DNS 与移动端 TCP 预检 | [GoogleDnsDiscovery](../app/src/main/java/dev/gdirect/lite/network/GoogleDnsDiscovery.java) · [GoogleFrontendScan](../app/src/main/java/dev/gdirect/lite/network/GoogleFrontendScan.java) |

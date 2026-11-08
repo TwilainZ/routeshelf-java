@@ -10,7 +10,7 @@ Owner authorized Apache-2.0 for application-owned source after ownership review 
 
 ## Current product and verification truth
 
-0.8.0-ui-preview/code 15 includes browsing/search/paging/sorting, shared drives/shortcuts, explicit opt-in file management/sharing/trash, native previews and exports, foreground uploads/downloads, and Material Drive-style navigation with a standalone unified SettingsActivity. See README, PRODUCT.md, DESIGN.md, docs/ACCEPTANCE.md and docs/DIRECT_NETWORK.md.
+0.8.1-stability-preview/code 16 includes browsing/search/paging/sorting, shared drives/shortcuts, explicit opt-in file management/sharing/trash, native previews and exports, foreground uploads/downloads, and Material Drive-style navigation with a standalone unified SettingsActivity. See README, PRODUCT.md, DESIGN.md, docs/ACCEPTANCE.md and docs/DIRECT_NETWORK.md.
 
 Network implementation: independent GTS-only trust store, normal/no-SNI/fixed g.cn TLS identity with logical Host separation, official non-Cloud IPv4 range filtering (a small attributed three-/24 bootstrap subset when the official catalog is unavailable), fast candidates before bounded expanded TCP discovery, up to eight verified IP/TLS combinations, explicit opt-in known relay, and checked media-only Google content redirects without credentials. Default remains Google-only. When relay consent exists, verify the fixed relay before blocking on official range/DNS discovery; successful preferred verification returns immediately, failure has a 5.5s/quarter-budget bound before Google fallback. Never silently enable relay consent. No arbitrary SNI, arbitrary relay, certificate forgery or trust-all fallback. Bundled public roots retain MPL-2.0, see docs/TRUST_ROOTS.md.
 
@@ -20,7 +20,9 @@ The owner requested builtin known Google candidates. Six individually unverified
 
 ConnectionCheck is application-owned, single-flight and cancellable; screen exit/rotation must not cancel it. Do not restart scans until cancellation finishes or reset policy while a transfer is active. Actual requests bind a network epoch and recheck it plus the account after TLS, before HTTP transmission; cancellation/policy changes must not poison healthy route caches. Bootstrap keeps at most two in-range historical hints before packaged candidates, all requiring revalidation. Settings centralizes account, routing, transfer preferences and help; public one-transfer IP remains separate.
 
-Current local baseline: 182 JVM tests per debug/preview variant, 11 standalone parsing/security checks, real loopback TLS and actual builds/Lint. No current phone UI/launcher screenshots, real-account transfer or China-network acceptance. Earlier owner reports of original public download and old main-package login do not prove this version. A prior software emulator without KVM failed to install; do not repeat it as evidence.
+Current local baseline: 191 JVM tests per debug/preview variant, 11 standalone parsing/security checks, real loopback TLS and actual builds/Lint. No current phone UI/launcher screenshots, real-account transfer or China-network acceptance. Earlier owner reports of original public download and old main-package login do not prove this version. A prior software emulator without KVM failed to install; do not repeat it as evidence.
+
+Navigation rendering must never dispatch listing requests. Guard both Material selected/reselected callbacks during programmatic synchronization and skip selection of an already selected item. Metadata GET attempts have 5s connect / 8s read / 12s whole-call maximums, preserving stricter caller/client limits. Media/export/range requests and writes retain their transfer timeouts. Whole-call timeouts are network failures, not user cancellation; cancellation/account/policy invalidation during body reads never rejects a healthy route. See docs/history/CONNECTION_LOOP_0_8_1.md for the owner log findings and regression evidence.
 
 ## Signing and delivery continuity
 
