@@ -52,6 +52,7 @@ public final class GoogleNetwork extends Application {
     private final ConnectionHealth health=new ConnectionHealth();
     private ConnectivityManager connectivity;
     private volatile boolean vpnActive;
+    private volatile boolean ipv6Available;
     private final NetworkPathTracker networkPaths=new NetworkPathTracker();
     private final ConnectionCheck check=new ConnectionCheck();
     private GoogleRangeCatalog catalog;
@@ -180,16 +181,29 @@ public final class GoogleNetwork extends Application {
             @Override public void onAvailable(Network network){refreshNetworkPath();}
             @Override public void onLost(Network network){refreshNetworkPath();}
             @Override public void onCapabilitiesChanged(Network network,android.net.NetworkCapabilities capabilities){refreshNetworkPath();}
+            @Override public void onLinkPropertiesChanged(Network network,android.net.LinkProperties properties){refreshNetworkPath();}
         });
     }
     private void refreshNetworkPath(){
         if(connectivity==null)return;
         Network active=connectivity.getActiveNetwork();
         android.net.NetworkCapabilities capabilities=active==null?null:connectivity.getNetworkCapabilities(active);
+        android.net.LinkProperties links=active==null?null:connectivity.getLinkProperties(active);
+        boolean hasIpv6=false;
+        if(links!=null) {
+            boolean defaultRoute=false;
+            for(android.net.RouteInfo route:links.getRoutes())if(route.isDefaultRoute()
+                &&route.getDestination().getAddress() instanceof java.net.Inet6Address)defaultRoute=true;
+            List<String> addresses=new ArrayList<>();
+            for(android.net.LinkAddress address:links.getLinkAddresses())
+                addresses.add(dev.gdirect.lite.network.IpLiteral.format(address.getAddress().getAddress()));
+            hasIpv6=NetworkPathTracker.routableIpv6(addresses,defaultRoute);
+        }
         synchronized(policyLock){
             vpnActive=capabilities!=null&&capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN);
+            ipv6Available=hasIpv6;
             health.online(active!=null);
-            if(!networkPaths.update(active==null?0:active.getNetworkHandle(),vpnActive))return;
+            if(!networkPaths.update(active==null?0:active.getNetworkHandle(),vpnActive,hasIpv6))return;
             DiagnosticLog.get().event(active==null?DiagnosticLog.Event.NETWORK_LOST:DiagnosticLog.Event.NETWORK_CHANGED);
             check.cancel();check.clearResult();reset();
             summary=active==null?"网络已断开，恢复后将重新检测":"网络路径已改变，下次请求将重新验证线路";
@@ -221,7 +235,8 @@ public final class GoogleNetwork extends Application {
     }
     String builtInCandidates(){return bootstrap.description();}
     private void logMode(){DiagnosticLog.get().event(systemNetwork()?DiagnosticLog.Event.MODE_SYSTEM:relayEnabled()?DiagnosticLog.Event.MODE_RELAY_ALLOWED:DiagnosticLog.Event.MODE_GOOGLE_ONLY);}
-    private boolean routeAddress(String ip){return (relayEnabled()&&KNOWN_RELAY.equals(ip))||(addressSpace!=null&&addressSpace.contains(ip));}
+    private boolean routeAddress(String ip){return (!dev.gdirect.lite.network.IpLiteral.ipv6(ip)||ipv6Available)
+        &&((relayEnabled()&&KNOWN_RELAY.equals(ip))||(addressSpace!=null&&addressSpace.contains(ip)));}
     private void prepareSpace()throws IOException {
         long operation=DiagnosticLog.get().operation(),start=System.nanoTime();
         DiagnosticLog.get().record(DiagnosticLog.Event.RANGE_BEGIN,operation,"www.gstatic.com",null,null,0,0,null);
@@ -259,31 +274,35 @@ public final class GoogleNetwork extends Application {
         long dnsOperation=DiagnosticLog.get().operation(),dnsStart=System.nanoTime();
         DiagnosticLog.get().record(DiagnosticLog.Event.DNS_BEGIN,dnsOperation,host,null,null,0,0,null);
         summary="正在收集 " + host + " 的系统及加密 DNS 候选…";
-        try (GoogleDnsDiscovery.Query encrypted = encryptedDns.start(host)) {
+        final boolean useIpv6=ipv6Available;
+        try (GoogleDnsDiscovery.Query encrypted = encryptedDns.start(host,useIpv6)) {
             // Android's asynchronous resolver supports actual cancellation; an interrupted
             // getAllByName can otherwise occupy every DNS worker after a network outage.
             List<Future<List<String>>> lookups = new ArrayList<>();
             List<CancellationSignal> cancellations = new ArrayList<>();
             List<String> freshDns = new ArrayList<>();
             for (String name : new LinkedHashSet<>(java.util.Arrays.asList(host,"www.googleapis.com","drive.usercontent.google.com"))) {
-                java.util.concurrent.CompletableFuture<List<String>> lookup = new java.util.concurrent.CompletableFuture<>();
-                CancellationSignal cancellation = new CancellationSignal();
-                lookups.add(lookup); cancellations.add(cancellation);
-                try {
-                    DnsResolver.getInstance().query(null,name,DnsResolver.TYPE_A,DnsResolver.FLAG_EMPTY,
-                        Runnable::run,cancellation,new DnsResolver.Callback<List<InetAddress>>() {
-                            @Override public void onAnswer(List<InetAddress> addresses,int rcode) {
-                                List<String> ips = new ArrayList<>();
-                                for (InetAddress address : addresses)
-                                    if (address.getAddress().length==4 && DirectRoutes.automaticAddress(address.getHostAddress()))
-                                        ips.add(address.getHostAddress());
-                                lookup.complete(ips);
-                            }
-                            @Override public void onError(DnsResolver.DnsException error) {
-                                lookup.complete(Collections.emptyList());
-                            }
-                        });
-                } catch (RuntimeException unavailable) { lookup.complete(Collections.emptyList()); }
+                for(int recordType:useIpv6?new int[]{DnsResolver.TYPE_A,DnsResolver.TYPE_AAAA}:new int[]{DnsResolver.TYPE_A}) {
+                    java.util.concurrent.CompletableFuture<List<String>> lookup = new java.util.concurrent.CompletableFuture<>();
+                    CancellationSignal cancellation = new CancellationSignal();
+                    lookups.add(lookup); cancellations.add(cancellation);
+                    try {
+                        DnsResolver.getInstance().query(null,name,recordType,DnsResolver.FLAG_EMPTY,
+                            Runnable::run,cancellation,new DnsResolver.Callback<List<InetAddress>>() {
+                                @Override public void onAnswer(List<InetAddress> addresses,int rcode) {
+                                    List<String> ips = new ArrayList<>();
+                                    for (InetAddress address : addresses)
+                                        if (address.getAddress().length==(recordType==DnsResolver.TYPE_A?4:16)
+                                            &&DirectRoutes.automaticAddress(dev.gdirect.lite.network.IpLiteral.format(address.getAddress())))
+                                            ips.add(dev.gdirect.lite.network.IpLiteral.format(address.getAddress()));
+                                    lookup.complete(ips);
+                                }
+                                @Override public void onError(DnsResolver.DnsException error) {
+                                    lookup.complete(Collections.emptyList());
+                                }
+                            });
+                    } catch (RuntimeException unavailable) { lookup.complete(Collections.emptyList()); }
+                }
             }
             long end = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(1800);
             try {
@@ -312,14 +331,14 @@ public final class GoogleNetwork extends Application {
                 if(output.size()<32&&!output.contains(ip))output.add(ip);
             for(String ip:history)if(output.size()<16&&!output.contains(ip))output.add(ip);
             if(relayEnabled())output.add(0,KNOWN_RELAY);
-            return output;
+            return dev.gdirect.lite.network.IpLiteral.interleave(output);
         }
     }
 
     private List<String> expandedCandidates(List<String> observed)throws IOException {
         GoogleAddressSpace space=addressSpace;if(space==null)return Collections.emptyList();
         summary="正在扩大 Google 前端检测范围，可随时取消…";
-        List<String> plan=space.discoveryCandidates(observed,512,new java.security.SecureRandom());
+        List<String> plan=space.discoveryCandidates(observed,ipv6Available?640:512,new java.security.SecureRandom(),ipv6Available);
         DiagnosticLog.get().record(DiagnosticLog.Event.SCAN_BEGIN,0,null,null,null,0,plan.size(),null);
         // DirectRoutes pipelines TCP and service validation. Do not cut off at 32 TCP answers:
         // those can all be unrelated Google services while later Drive frontends remain unseen.

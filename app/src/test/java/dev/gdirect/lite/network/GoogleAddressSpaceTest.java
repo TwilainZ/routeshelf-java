@@ -6,6 +6,35 @@ import java.util.*;
 import org.junit.Test;
 
 public final class GoogleAddressSpaceTest {
+    static String dual(String v4,String...v6) {
+        String base=json(v4);StringBuilder result=new StringBuilder(base.substring(0,base.length()-2));
+        for(String prefix:v6)result.append(",{\"ipv6Prefix\":\"").append(prefix).append("\"}");
+        return result+"]}";
+    }
+    @Test public void ipv6SubtractionPreservesSingleAddressAndLargePrefixBoundaries()throws Exception {
+        GoogleAddressSpace space=GoogleAddressSpace.parse(dual("142.250.0.0/16","2001:4860::/32"),
+            dual("142.250.1.0/24","2001:4860:1::/48","2001:4860:2::1/128","2001:4860:3::/127"));
+        assertTrue(space.contains("2001:4860::"));assertFalse(space.contains("2001:4860:1:ffff::1"));
+        assertFalse(space.contains("2001:4860:2::1"));assertTrue(space.contains("2001:4860:2::2"));
+        assertFalse(space.contains("2001:4860:3::"));assertFalse(space.contains("2001:4860:3::1"));
+        assertTrue(space.contains("2001:4860:3::2"));assertTrue(space.contains("142.250.2.1"));
+        assertFalse(space.contains("::ffff:142.250.2.1"));assertFalse(space.contains("2001:db8::1"));
+    }
+    @Test public void malformedIpv6AndIncompleteFamilyCatalogsFailClosed()throws Exception {
+        String valid=dual("142.250.0.0/16","2001:4860::/32");
+        for(String prefix:Arrays.asList("2001:4860::1/64","2001:4860::/129","2001:4860::/-1","2001:db8::/32","fc00::/7","not-a-host/64"))
+            assertThrows(IOException.class,()->GoogleAddressSpace.parse(dual("142.250.0.0/16",prefix),valid));
+        assertThrows(IOException.class,()->GoogleAddressSpace.parse(valid,json("142.250.1.0/24")));
+    }
+    @Test public void ipv6NeighborhoodsStayInsideThePublishedNonCloudSpace()throws Exception {
+        GoogleAddressSpace space=GoogleAddressSpace.parse(dual("142.250.0.0/16","2001:4860::/32"),dual("142.250.1.0/24","2001:4860:1::/48"));
+        List<String> observed=Arrays.asList("2001:4860:2::200e","2001:4860:1::1","142.250.2.100");
+        List<String> plan=space.discoveryCandidates(observed,640,new Random(11),true);
+        assertEquals(640,plan.size());assertEquals(128,plan.stream().filter(IpLiteral::ipv6).count());
+        assertEquals(512,plan.stream().filter(ip->!IpLiteral.ipv6(ip)).count());
+        for(String ip:plan){assertTrue(space.contains(ip));if(IpLiteral.ipv6(ip))assertTrue(ip.startsWith("2001:4860:2::"));}
+        for(String ip:space.discoveryCandidates(observed,512,new Random(11),false))assertFalse(IpLiteral.ipv6(ip));
+    }
     @Test public void discoveryUsesObservedNeighborhoodsAndAcceptsSlowerTcpWithoutLeavingTheOfficialSpace()throws Exception {
         GoogleAddressSpace space=GoogleAddressSpace.parse(json("142.250.0.0/16"),json("142.250.1.0/24"));
         List<String> candidates=space.discoveryCandidates(Arrays.asList("142.250.2.100","183.56.143.147","142.250.1.100"),512,new Random(17));

@@ -6,6 +6,12 @@
 - 重整首页、安装与贡献指南，将 Android 设计、产品范围和旧版本资料归入文档目录。
 - 当前项目自有源码改用 GPL-3.0-only。历史版本的授权、第三方组件条款和 Android 的 Google Play 服务链接例外见 [许可证与归属](docs/LICENSING.md)。
 
+## 0.8.5-ipv6-preview（versionCode 20）
+
+- 独立 Java IPv6 字面量、规范化和官方 Google/Cloud 双栈区间过滤；系统/加密 DNS 加入 AAAA 和 IPv6 DNS 引导。
+- 两族探测分开限流，保留 IPv4 原有预算及 TLS/授权/下载保护；网络 IPv6 可用性变化清除旧路线。
+- 高级 IP 输入、连接状态与脱敏日志支持 IPv6；保持现有包名和固定预览签名。实现与验证边界见 [IPv6](docs/IPV6.md)。
+
 ## 0.8.4-navigation-preview（versionCode 19）
 
 - 主菜单按浏览/传输/设置分组；连接状态使用顶部入口或设置，检测集中在连接页。首页不重复提供文件范围选择。

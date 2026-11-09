@@ -66,7 +66,7 @@ public final class DiagnosticLog {
     }
     private static String encode(long time,Event event,long operation,Target target,String ip,DirectRoutes.TlsMode tls,long millis,int code,Failure error) {
         try{return new JSONObject().put("v",1).put("time",time).put("event",event.name()).put("op",Math.max(0,operation))
-            .put("target",target.name()).put("ip",DirectRoutes.publicIpv4(ip)?ip:"").put("tls",tls==null?"":tls.name())
+            .put("target",target.name()).put("ip",dev.gdirect.lite.network.IpLiteral.publicAddress(ip)?dev.gdirect.lite.network.IpLiteral.canonical(ip):"").put("tls",tls==null?"":tls.name())
             .put("ms",Math.max(0,Math.min(millis,86400000))).put("code",code).put("error",error.name()).toString();}
         catch(org.json.JSONException e){throw new IllegalStateException(e);}
     }

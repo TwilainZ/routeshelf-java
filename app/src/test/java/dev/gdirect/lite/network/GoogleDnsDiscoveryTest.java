@@ -12,6 +12,40 @@ import okhttp3.mockwebserver.SocketPolicy;
 import org.junit.Test;
 
 public final class GoogleDnsDiscoveryTest {
+    @Test public void aaaaAnswersAreQuestionBoundCanonicalAndPublicOnly()throws Exception {
+        String records=record(NAME,5,"alias.google.com.")+","+record("alias.google.com",28,"2001:4860:0:0:0:0:0:8888")+","
+            +record("alias.google.com",28,"2001:4860::8888")+","+record("alias.google.com",28,"fe80::1")+","
+            +record("alias.google.com",28,"::ffff:8.8.8.8")+","+record("other.example",28,"2001:4860::8844");
+        String response=answer(records).replace("\"type\":1}]","\"type\":28}]");
+        assertEquals(Collections.singletonList("2001:4860::8888"),GoogleDnsDiscovery.parse(NAME,response,28));
+        assertThrows(IOException.class,()->GoogleDnsDiscovery.parse(NAME,response,1));
+        assertThrows(IOException.class,()->GoogleDnsDiscovery.parse(NAME,response,15));
+    }
+    @Test public void dualStackQueriesBootstrapOverIpv6AndKeepAaaaSeparateFromA()throws Exception {
+        try(GoogleHttpTest.Fixture f=new GoogleHttpTest.Fixture("dns.google",java.net.InetAddress.getByName("::1"))) {
+            f.server.setDispatcher(new okhttp3.mockwebserver.Dispatcher(){
+                @Override public MockResponse dispatch(RecordedRequest request) {
+                    boolean aaaa=request.getPath().contains("type=AAAA");
+                    String body=answer(record(NAME,aaaa?28:1,aaaa?"2001:4860::8888":"142.250.1.1"));
+                    if(aaaa)body=body.replace("\"type\":1}]","\"type\":28}]");
+                    return new MockResponse().setHeader("Content-Type","application/dns-json").setBody(body);
+                }
+            });
+            java.util.Set<String> bootstrap=java.util.concurrent.ConcurrentHashMap.newKeySet();
+            GoogleDnsDiscovery discovery=new GoogleDnsDiscovery((route,request)->{
+                bootstrap.add(route.ip);assertNull(request.header("Authorization"));
+                assertEquals("AAAA".equals(request.url().queryParameter("type"))?"::/0":"0.0.0.0/0",request.url().queryParameter("edns_client_subnet"));
+                OkHttpClient trusted=new OkHttpClient.Builder().sslSocketFactory(f.clientTrust.sslSocketFactory(),f.clientTrust.trustManager()).build();
+                return GoogleHttp.direct(trusted,new DirectRoutes.Route("dns.google",f.bindAddress.getHostAddress(),route.tls,0))
+                    .newCall(request.newBuilder().url(request.url().newBuilder().port(f.server.getPort()).build()).build());
+            });
+            try(GoogleDnsDiscovery.Query query=discovery.start(NAME,true)) {
+                await(query);assertEquals(Arrays.asList("142.250.1.1","2001:4860::8888"),query.addresses());
+                assertEquals(16,query.calls.size());assertEquals(4,bootstrap.size());assertEquals(16,f.server.getRequestCount());
+                assertTrue(bootstrap.contains("2001:4860:4860::8888"));assertTrue(bootstrap.contains("2001:4860:4860::8844"));
+            }
+        }
+    }
     static final String NAME="www.googleapis.com";
     static String answer(String records) {
         return "{\"Status\":0,\"Question\":[{\"name\":\"www.googleapis.com.\",\"type\":1}],\"Answer\":["+records+"]}";

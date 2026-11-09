@@ -28,7 +28,7 @@ for relay_variant in before after; do
     relay_extra_sources+=("$relay_bench_dir/$relay_variant/RouteProbeQueue.java")
   fi
   javac -d "$relay_bench_dir/$relay_variant" "$relay_bench_dir/$relay_variant/DirectRoutes.java" "${relay_extra_sources[@]}" \
-    app/src/main/java/dev/gdirect/lite/network/DirectNet.java app/src/main/java/dev/gdirect/lite/transfer/TransferRules.java \
+    app/src/main/java/dev/gdirect/lite/network/IpLiteral.java app/src/main/java/dev/gdirect/lite/network/DirectNet.java app/src/main/java/dev/gdirect/lite/transfer/TransferRules.java \
     tools/checks/src/dev/gdirect/lite/network/RelayStartupBenchmark.java
   echo "$relay_variant (synthetic 1500ms metadata delay; fixture probe, no network):"
   java -cp "$relay_bench_dir/$relay_variant" dev.gdirect.lite.network.RelayStartupBenchmark

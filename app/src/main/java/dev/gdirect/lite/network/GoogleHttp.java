@@ -38,7 +38,9 @@ public final class GoogleHttp {
         default void cancelled(){}
     }
     public static OkHttpClient direct(OkHttpClient trusted, DirectRoutes.Route route) throws IOException {
-        InetAddress address = InetAddress.getByName(route.ip); // Route contains a validated literal, never DNS.
+        final InetAddress address;
+        try{address=InetAddress.getByAddress(IpLiteral.bytes(route.ip));}
+        catch(IllegalArgumentException invalid){throw new java.net.UnknownHostException("Invalid numeric route address");}
         OkHttpClient.Builder builder = trusted.newBuilder()
             .proxy(Proxy.NO_PROXY).followRedirects(false).followSslRedirects(false)
             .dns(host -> {

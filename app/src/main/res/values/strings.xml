@@ -11,7 +11,7 @@
     <string name="ui_start_download">开始下载</string>
     <string name="ui_advanced">高级选项</string>
     <string name="ui_manual_ip">本次下载 IP（可选）</string>
-    <string name="ui_manual_help">留空自动连接。指定时仍验证 Google 范围与证书。</string>
+    <string name="ui_manual_help">支持 IPv4 / IPv6；留空自动连接。指定时仍验证 Google 范围与证书。</string>
     <string name="ui_current_transfer">当前传输</string>
     <string name="ui_cancel_transfer">停止传输</string>
     <string name="ui_open_file">打开下载文件</string>

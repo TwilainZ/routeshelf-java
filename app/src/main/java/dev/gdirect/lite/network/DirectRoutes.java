@@ -76,35 +76,22 @@ public final class DirectRoutes {
     }
 
     public static boolean publicIpv4(String value) {
-        if (value == null || !value.matches("[0-9]{1,3}(\\.[0-9]{1,3}){3}")) return false;
-        String[] parts = value.split("\\.");
-        int[] n = new int[4];
-        for (int i = 0; i < 4; i++) {
-            if (parts[i].length() > 1 && parts[i].startsWith("0")) return false;
-            n[i] = Integer.parseInt(parts[i]);
-            if (n[i] > 255) return false;
-        }
-        return n[0] != 0 && n[0] != 10 && n[0] != 127 && n[0] < 224
-            && !(n[0] == 100 && n[1] >= 64 && n[1] <= 127)
-            && !(n[0] == 169 && n[1] == 254) && !(n[0] == 172 && n[1] >= 16 && n[1] <= 31)
-            && !(n[0] == 192 && (n[1] == 168 || (n[1] == 0 && (n[2] == 0 || n[2] == 2))))
-            && !(n[0] == 198 && (n[1] == 18 || n[1] == 19 || (n[1] == 51 && n[2] == 100)))
-            && !(n[0] == 203 && n[1] == 0 && n[2] == 113);
+        return IpLiteral.publicAddress(value) && !IpLiteral.ipv6(value);
     }
 
     // Identified by the service author's correction as a third-party reverse proxy.
     // A public address and a valid certificate alone do not establish Google ownership.
     public static boolean automaticAddress(String ip) {
-        return publicIpv4(ip) && !"183.56.143.147".equals(ip);
+        return IpLiteral.publicAddress(ip) && !"183.56.143.147".equals(ip);
     }
 
     public static List<String> candidates(List<String> freshDns, List<String> history) {
         LinkedHashSet<String> ordered = new LinkedHashSet<>();
-        for (String value : freshDns) {
+        for (String value : IpLiteral.interleave(freshDns)) {
             if (automaticAddress(value)) ordered.add(value);
             if (ordered.size() >= 8) break;
         }
-        for (String value : history) {
+        for (String value : IpLiteral.interleave(history)) {
             if (automaticAddress(value)) ordered.add(value);
             if (ordered.size() >= 16) break;
         }
@@ -112,6 +99,7 @@ public final class DirectRoutes {
     }
 
     public static List<String> candidates(List<String> system,List<String> encrypted,List<String> history) {
+        system=IpLiteral.interleave(system);encrypted=IpLiteral.interleave(encrypted);
         LinkedHashSet<String> fresh=new LinkedHashSet<>();
         // Neither a poisoned system answer set nor one resolver may consume all slots.
         for(int i=0;i<Math.max(system.size(),encrypted.size())&&fresh.size()<8;i++) {
@@ -194,7 +182,12 @@ public final class DirectRoutes {
             if(found!=null)return found;
             if(System.nanoTime()<deadline) {
                 LinkedHashSet<String> expanded=new LinkedHashSet<>();
-                for(String ip:candidates.expand(host,new ArrayList<>(ips)))if(!ips.contains(ip)&&permitted.test(ip)){expanded.add(ip);if(expanded.size()>=512)break;}
+                int v4=0,v6=0;
+                for(String ip:candidates.expand(host,new ArrayList<>(ips)))if(!ips.contains(ip)&&permitted.test(ip)) {
+                    if(IpLiteral.ipv6(ip)){if(v6>=128)continue;if(expanded.add(ip))v6++;}
+                    else {if(v4>=512)continue;if(expanded.add(ip))v4++;}
+                    if(v4>=512&&v6>=128)break;
+                }
                 found=verify(host,expanded,failed,now,epoch,deadline,operation);if(found!=null)return found;
             }
             String message="未找到 "+host+" 的可用连接。可在连接设置中重新检测或切换模式；VPN/TUN 可能接管连接。";
@@ -277,7 +270,8 @@ public final class DirectRoutes {
     }
     private static InterruptedIOException interrupted() { return new InterruptedIOException("直连检测已取消"); }
     public static String description(Route route, boolean cached) {
-        return (route.ip.equals("183.56.143.147")?"第三方中转 · ":"Google 前端 · ") + route.host + " → " + route.ip
+        return (route.ip.equals("183.56.143.147")?"第三方中转 · ":"Google 前端 · ")
+            +(IpLiteral.ipv6(route.ip)?"IPv6 · ":"IPv4 · ")+route.host + " → " + route.ip
             + (route.tls == TlsMode.NO_SNI ? " · 无 SNI" : route.tls==TlsMode.GOOGLE_FRONT?" · Google 前端身份":" · 标准 TLS")
             + (cached ? " · 已缓存" : " · 已通过证书及连通性检查");
     }

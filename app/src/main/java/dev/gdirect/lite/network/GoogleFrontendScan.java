@@ -29,6 +29,6 @@ public final class GoogleFrontendScan {
         finally{for(Future<String> job:jobs)job.cancel(true);pool.shutdownNow();}
     }
     public static void tcp(String ip)throws IOException {
-        try(java.net.Socket socket=new java.net.Socket()){socket.connect(new java.net.InetSocketAddress(java.net.InetAddress.getByName(ip),443),1200);}
+        try(java.net.Socket socket=new java.net.Socket()){socket.connect(new java.net.InetSocketAddress(java.net.InetAddress.getByAddress(IpLiteral.bytes(ip)),443),1200);}
     }
 }

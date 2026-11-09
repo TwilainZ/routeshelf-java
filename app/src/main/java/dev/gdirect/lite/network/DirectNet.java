@@ -38,12 +38,8 @@ public final class DirectNet {
     public static String parseIp(String raw) {
         String s = raw == null ? "" : raw.trim();
         if (s.isEmpty()) return null;
-        if (!s.matches("[0-9]{1,3}(\\.[0-9]{1,3}){3}"))
-            throw new IllegalArgumentException("目前仅支持输入 IPv4 地址");
-        for (String seg : s.split("\\.")) {
-            if (Integer.parseInt(seg) > 255) throw new IllegalArgumentException("IP 地址无效");
-        }
-        return s;
+        if(s.startsWith("[")&&s.endsWith("]"))s=s.substring(1,s.length()-1);
+        return IpLiteral.canonical(s);
     }
 
     public static boolean googleHost(String host) {

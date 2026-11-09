@@ -33,7 +33,7 @@ app/src/main/java/dev/gdirect/lite/
 | 有界 TCP → TLS 流水线与网络/VPN 路径变化 | [RouteProbeQueue](../app/src/main/java/dev/gdirect/lite/network/RouteProbeQueue.java) · [NetworkPathTracker](../app/src/main/java/dev/gdirect/lite/network/NetworkPathTracker.java) |
 | 固定 IP、g.cn 身份/真实 Host、HTTP 适配、发送前检查、元数据时限及取消保护 | [GoogleHttp](../app/src/main/java/dev/gdirect/lite/network/GoogleHttp.java) |
 | Google 专用根与额外证书限制 | [GoogleTrust](../app/src/main/java/dev/gdirect/lite/network/GoogleTrust.java) · [GoogleCertificatePolicy](../app/src/main/java/dev/gdirect/lite/network/GoogleCertificatePolicy.java) |
-| 官方范围过滤、缓存与有限内置候选 | [GoogleAddressSpace](../app/src/main/java/dev/gdirect/lite/network/GoogleAddressSpace.java) · [GoogleRangeCatalog](../app/src/main/java/dev/gdirect/lite/network/GoogleRangeCatalog.java) · [GoogleBootstrap](../app/src/main/java/dev/gdirect/lite/network/GoogleBootstrap.java) |
+| IPv4/IPv6 数字解析、官方范围过滤、缓存与有限内置候选 | [IpLiteral](../app/src/main/java/dev/gdirect/lite/network/IpLiteral.java) · [GoogleAddressSpace](../app/src/main/java/dev/gdirect/lite/network/GoogleAddressSpace.java) · [GoogleRangeCatalog](../app/src/main/java/dev/gdirect/lite/network/GoogleRangeCatalog.java) · [GoogleBootstrap](../app/src/main/java/dev/gdirect/lite/network/GoogleBootstrap.java) |
 | 加密 DNS 与移动端 TCP 预检 | [GoogleDnsDiscovery](../app/src/main/java/dev/gdirect/lite/network/GoogleDnsDiscovery.java) · [GoogleFrontendScan](../app/src/main/java/dev/gdirect/lite/network/GoogleFrontendScan.java) |
 | 可取消的手动检测、幂等读取重试 | [ConnectionCheck](../app/src/main/java/dev/gdirect/lite/network/ConnectionCheck.java) · [ReadRetry](../app/src/main/java/dev/gdirect/lite/network/ReadRetry.java) |
 

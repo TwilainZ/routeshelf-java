@@ -10,6 +10,13 @@ import org.json.JSONObject;
 import org.junit.Test;
 
 public final class DiagnosticLogTest {
+    @Test public void ipv6CandidatesRemainCanonicalAndScopedPrivateValuesAreRedacted()throws Exception {
+        DiagnosticLog log=new DiagnosticLog();
+        for(String ip:new String[]{"2001:4860:0:0:0:0:0:8888","fe80::1%wlan0","fc00::1"})
+            log.record(DiagnosticLog.Event.PROBE_OK,1,"www.googleapis.com",ip,null,2,401,null);
+        String[] lines=log.encoded().split("\n");assertEquals("2001:4860::8888",new JSONObject(lines[0]).getString("ip"));
+        assertEquals("",new JSONObject(lines[1]).getString("ip"));assertEquals("",new JSONObject(lines[2]).getString("ip"));
+    }
     @Test public void untrustedHostIpAndExceptionTextCannotLeakIntoLogs() {
         DiagnosticLog log=new DiagnosticLog();String secret="CANARY_ACCOUNT_TOKEN_FILE_RESOURCEKEY_8264";
         IOException error=new IOException(secret){@Override public String getMessage(){throw new AssertionError("Exception messages must not be read");}};

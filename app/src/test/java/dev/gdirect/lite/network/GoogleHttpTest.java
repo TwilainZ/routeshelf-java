@@ -247,13 +247,18 @@ public final class GoogleHttpTest {
             assertTrue(log.report().contains("REQUEST_HEADERS"));assertTrue(log.report().contains("REQUEST_RESPONSE"));assertTrue(log.report().contains("code=200"));
         }
     }
-    private static final String HOST = "www.googleapis.com";
+    static final String HOST = "www.googleapis.com";
     static final class Fixture implements AutoCloseable {
         final MockWebServer server = new MockWebServer();
         final CompletableFuture<List<SNIServerName>> sni = new CompletableFuture<>();
         final HandshakeCertificates clientTrust;
         final java.util.concurrent.atomic.AtomicReference<String> tlsPeer = new java.util.concurrent.atomic.AtomicReference<>();
+        final InetAddress bindAddress;
         Fixture(String certificateHost) throws Exception {
+            this(certificateHost,InetAddress.getByName("127.0.0.1"));
+        }
+        Fixture(String certificateHost,InetAddress bindAddress) throws Exception {
+            this.bindAddress=bindAddress;
             HeldCertificate ca = new HeldCertificate.Builder().certificateAuthority(0).commonName("Unit test CA").build();
             HeldCertificate leaf = new HeldCertificate.Builder().commonName(certificateHost)
                 .addSubjectAlternativeName(certificateHost).signedBy(ca).build();
@@ -262,13 +267,13 @@ public final class GoogleHttpTest {
             clientTrust = new HandshakeCertificates.Builder().addTrustedCertificate(ca.certificate()).build();
             server.useHttps(new ObserveSni(serverKeys.sslSocketFactory(),sni),false);
             server.setProtocols(Collections.singletonList(Protocol.HTTP_1_1));
-            server.start(InetAddress.getByName("127.0.0.1"),0);
+            server.start(bindAddress,0);
         }
         URL url() throws Exception { return new URL("https://" + HOST + ":" + server.getPort() + "/drive/v3/files?alt=media"); }
         OkHttpClient client(DirectRoutes.TlsMode mode, boolean trusted) throws Exception {
             OkHttpClient.Builder builder = new OkHttpClient.Builder().protocols(Collections.singletonList(Protocol.HTTP_1_1));
             if (trusted) builder.sslSocketFactory(new RecordPeer(clientTrust.sslSocketFactory(),tlsPeer), clientTrust.trustManager());
-            return GoogleHttp.direct(builder.build(),new DirectRoutes.Route(HOST,"127.0.0.1",mode,0));
+            return GoogleHttp.direct(builder.build(),new DirectRoutes.Route(HOST,bindAddress.getHostAddress(),mode,0));
         }
         @Override public void close() throws Exception { server.shutdown(); }
     }
