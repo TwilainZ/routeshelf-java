@@ -110,10 +110,17 @@ public final class DirectRoutes {
     }
 
     public Route select(String host, Set<String> failed) throws IOException {
+        return select(host,failed,false);
+    }
+    /** Recheck current service reachability without clearing live routes, pools or network epochs. */
+    public Route check(String host)throws IOException {
+        return select(host,java.util.Collections.emptySet(),true);
+    }
+    private Route select(String host,Set<String> failed,boolean recheck)throws IOException {
         long operation=trace.operation(),start=System.nanoTime();
         trace(Phase.SELECT_BEGIN,operation,host,null,0,null);
         try {
-            Route route=selectInternal(host,failed,operation);
+            Route route=selectInternal(host,failed,operation,recheck);
             trace(Phase.SELECT_OK,operation,host,route,elapsed(start),null);return route;
         }catch(IOException|RuntimeException error){trace(Phase.SELECT_FAILED,operation,host,null,elapsed(start),error);throw error;}
     }
@@ -121,15 +128,43 @@ public final class DirectRoutes {
         try{trace.event(phase,operation,host,route,millis,error);}catch(RuntimeException ignored){}
     }
     private static long elapsed(long start){return TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-start);}
-    private Route selectInternal(String host,Set<String> failed,long operation)throws IOException {
+    private Route selectInternal(String host,Set<String> failed,long operation,boolean recheck)throws IOException {
         if (!DirectNet.googleHost(host)) throw new IOException("不允许的直连域名");
         try { gate.lockInterruptibly(); }
         catch (InterruptedException error) { Thread.currentThread().interrupt(); throw interrupted(); }
         try {
             long epoch = generation;
             long now = System.currentTimeMillis();
+            long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(budgetMillis);
+            if(recheck)for(Route cached:store.loadAll(host)) {
+                if(!usable(cached,host,failed,now))continue;
+                long began=System.nanoTime();
+                boolean validated=false;
+                try {
+                    probe.check(cached);
+                    validated=true;
+                    synchronized(cacheLock) {
+                        if(Thread.currentThread().isInterrupted())throw interrupted();
+                        if(generation!=epoch)throw new IOException("网络已切换，请重新检测");
+                        Route fresh=new Route(host,cached.ip,cached.tls,System.currentTimeMillis());
+                        List<Route> retained=new ArrayList<>();retained.add(fresh);
+                        for(Route other:store.loadAll(host))if(retained.size()<8&&usable(other,host,failed,now)&&!other.key().equals(fresh.key()))retained.add(other);
+                        rejected.remove(host+"/"+fresh.key());failures.remove(host);store.saveAll(host,retained);
+                        trace(Phase.PROBE_OK,operation,host,fresh,elapsed(began),null);observer.update(description(fresh,false));return fresh;
+                    }
+                }catch(IOException|RuntimeException error) {
+                    if(Thread.currentThread().isInterrupted())throw interrupted();
+                    if(validated)throw error;
+                    synchronized(cacheLock) {
+                        if(generation!=epoch)throw new IOException("网络已切换，请重新检测");
+                        reject(cached);
+                    }
+                    trace(Phase.PROBE_FAILED,operation,host,cached,elapsed(began),error);
+                    break; // one bounded cached attempt; normal verified fallback handles the rest
+                }
+            }
             for(Route alternative:store.loadAll(host)) {
-                if(alternative!=null&&alternative.host.equals(host)&&permitted.test(alternative.ip)&&alternative.checkedAt<=now
+                if(!recheck&&alternative!=null&&alternative.host.equals(host)&&permitted.test(alternative.ip)&&alternative.checkedAt<=now
                     &&now-alternative.checkedAt<MAX_AGE&&!failed.contains(alternative.key())&&!recentlyRejected(alternative)) {
                     if(generation!=epoch)throw new IOException("网络已切换，请重新检测直连线路");
                     trace(Phase.CACHE_HIT,operation,host,alternative,0,null);observer.update(description(alternative,true));return alternative;
@@ -139,7 +174,7 @@ public final class DirectRoutes {
             if(cached!=null&&!permitted.test(cached.ip)) {
                 synchronized(cacheLock){store.remove(host);}cached=null;
             }
-            if (cached != null && cached.host.equals(host) && permitted.test(cached.ip)
+            if (!recheck && cached != null && cached.host.equals(host) && permitted.test(cached.ip)
                     && cached.checkedAt <= now && now - cached.checkedAt < MAX_AGE
                     && !failed.contains(cached.key()) && !recentlyRejected(cached)) {
                 if (generation != epoch) throw new IOException("网络已切换，请重新检测直连线路");
@@ -147,7 +182,6 @@ public final class DirectRoutes {
                 return cached;
             }
             if (generation != epoch) throw new IOException("网络已切换，请重新检测直连线路");
-            long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(budgetMillis);
             Route previous=recovery.remove(host);
             if(previous!=null&&permitted.test(previous.ip)) {
                 // A route learned through a VPN may stop working with its real SNI.
@@ -157,7 +191,7 @@ public final class DirectRoutes {
                 if(repaired!=null)return repaired;
             }
             Long recent = failures.get(host);
-            if (recent != null && System.nanoTime() - recent < TimeUnit.SECONDS.toNanos(10))
+            if (!recheck && recent != null && System.nanoTime() - recent < TimeUnit.SECONDS.toNanos(10))
                 throw new IOException("刚才未找到可用直连线路；请稍后重试或点重新检测直连");
             // An explicitly allowed fixed endpoint needs no Google-ownership catalog or DNS.
             // Bound its head start; failed preference must leave time for normal discovery.
@@ -193,6 +227,11 @@ public final class DirectRoutes {
             String message="未找到 "+host+" 的可用连接。可在连接设置中重新检测或切换模式；VPN/TUN 可能接管连接。";
             observer.update(message);failures.put(host,System.nanoTime());throw new IOException(message);
         } finally { gate.unlock(); }
+    }
+
+    private boolean usable(Route route,String host,Set<String> failed,long now) {
+        return route!=null&&route.host.equals(host)&&permitted.test(route.ip)&&route.checkedAt<=now
+            &&now-route.checkedAt<MAX_AGE&&!failed.contains(route.key())&&!recentlyRejected(route);
     }
 
     private Route verify(String host,Set<String> ips,Set<String> failed,long now,long epoch,long deadline,long operation)throws IOException {

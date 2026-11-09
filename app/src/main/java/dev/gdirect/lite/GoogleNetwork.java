@@ -53,6 +53,7 @@ public final class GoogleNetwork extends Application {
     private ConnectivityManager connectivity;
     private volatile boolean vpnActive;
     private volatile boolean ipv6Available;
+    private volatile NetworkPathTracker.Ipv6State ipv6State=NetworkPathTracker.Ipv6State.UNKNOWN;
     private final NetworkPathTracker networkPaths=new NetworkPathTracker();
     private final ConnectionCheck check=new ConnectionCheck();
     private GoogleRangeCatalog catalog;
@@ -81,7 +82,7 @@ public final class GoogleNetwork extends Application {
             }
             public void delete(){logs.delete();}
         });
-        DiagnosticLog.get().event(DiagnosticLog.Event.APP_START);
+        DiagnosticLog.get().record(DiagnosticLog.Event.APP_START,0,null,null,null,0,BuildConfig.VERSION_CODE,null);
         java.io.File[] abandonedPreviews=getCacheDir().listFiles((dir,name)->name.startsWith("drive-preview-"));
         if(abandonedPreviews!=null)for(java.io.File file:abandonedPreviews)file.delete();
         preferences = getSharedPreferences("direct-network", MODE_PRIVATE);
@@ -189,17 +190,19 @@ public final class GoogleNetwork extends Application {
         Network active=connectivity.getActiveNetwork();
         android.net.NetworkCapabilities capabilities=active==null?null:connectivity.getNetworkCapabilities(active);
         android.net.LinkProperties links=active==null?null:connectivity.getLinkProperties(active);
-        boolean hasIpv6=false;
+        boolean defaultRoute=false;
+        List<String> addresses=new ArrayList<>();
         if(links!=null) {
-            boolean defaultRoute=false;
             for(android.net.RouteInfo route:links.getRoutes())if(route.isDefaultRoute()
                 &&route.getDestination().getAddress() instanceof java.net.Inet6Address)defaultRoute=true;
-            List<String> addresses=new ArrayList<>();
             for(android.net.LinkAddress address:links.getLinkAddresses())
                 addresses.add(dev.gdirect.lite.network.IpLiteral.format(address.getAddress().getAddress()));
-            hasIpv6=NetworkPathTracker.routableIpv6(addresses,defaultRoute);
         }
+        NetworkPathTracker.Ipv6State state=NetworkPathTracker.ipv6State(active!=null,links!=null,addresses,defaultRoute);
+        boolean hasIpv6=state==NetworkPathTracker.Ipv6State.READY;
         synchronized(policyLock){
+            if(ipv6State!=state)DiagnosticLog.get().record(DiagnosticLog.Event.IPV6_STATUS,0,null,null,null,0,state.code,null);
+            ipv6State=state;
             vpnActive=capabilities!=null&&capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN);
             ipv6Available=hasIpv6;
             health.online(active!=null);
@@ -213,6 +216,7 @@ public final class GoogleNetwork extends Application {
     public String summary() { return systemNetwork() ? "系统网络：遵循设备的 DNS 和代理设置" : summary; }
     ConnectionHealth.Snapshot health(){refreshNetworkPath();return health.snapshot();}
     boolean vpnActive(){return vpnActive;}
+    String ipv6Summary(){return systemNetwork()?"IPv6：系统网络模式下由 Android 与代理选择地址族":ipv6State.description;}
     long healthGeneration(){return health.generation();}
     void downloadVerified(long generation){health.downloaded(generation);}
     private ConnectionHealth.Problem problem(Throwable error){
@@ -242,6 +246,7 @@ public final class GoogleNetwork extends Application {
         DiagnosticLog.get().record(DiagnosticLog.Event.RANGE_BEGIN,operation,"www.gstatic.com",null,null,0,0,null);
         if(addressSpace==null)summary="正在核对 Google 官方地址范围…";
         GoogleBootstrap.Scope scope=bootstrap.scope(catalog);
+        if(addressSpace!=scope.space)DiagnosticLog.get().record(DiagnosticLog.Event.RANGE_IPV6_READY,operation,"www.gstatic.com",null,null,0,scope.space.ipv6IntervalCount(),null);
         addressSpace=scope.space;bootstrapOnly=scope.bundled;
         DiagnosticLog.get().record(bootstrapOnly?DiagnosticLog.Event.RANGE_BOOTSTRAP:DiagnosticLog.Event.RANGE_READY,operation,"www.gstatic.com",null,null,DiagnosticLog.elapsed(start),0,null);
         if(bootstrapOnly)summary="官方列表暂不可达，先验证内置公开报告候选；没有通过验证的地址不会使用";
@@ -275,6 +280,7 @@ public final class GoogleNetwork extends Application {
         DiagnosticLog.get().record(DiagnosticLog.Event.DNS_BEGIN,dnsOperation,host,null,null,0,0,null);
         summary="正在收集 " + host + " 的系统及加密 DNS 候选…";
         final boolean useIpv6=ipv6Available;
+        DiagnosticLog.get().record(DiagnosticLog.Event.IPV6_STATUS,dnsOperation,null,null,null,0,ipv6State.code,null);
         try (GoogleDnsDiscovery.Query encrypted = encryptedDns.start(host,useIpv6)) {
             // Android's asynchronous resolver supports actual cancellation; an interrupted
             // getAllByName can otherwise occupy every DNS worker after a network outage.
@@ -325,6 +331,10 @@ public final class GoogleNetwork extends Application {
             List<String> encryptedAnswers=encrypted.addresses();
             DiagnosticLog.get().record(DiagnosticLog.Event.DNS_READY,dnsOperation,host,null,null,DiagnosticLog.elapsed(dnsStart),freshDns.size()+encryptedAnswers.size(),null);
             freshDns.removeIf(ip->!space.contains(ip));encryptedAnswers.removeIf(ip->!space.contains(ip));result.removeIf(ip->!space.contains(ip));
+            java.util.Set<String> unique=new LinkedHashSet<>(freshDns);unique.addAll(encryptedAnswers);
+            int count6=0;for(String ip:unique)if(dev.gdirect.lite.network.IpLiteral.ipv6(ip))count6++;
+            DiagnosticLog.get().record(DiagnosticLog.Event.DNS_A_READY,dnsOperation,host,null,null,0,unique.size()-count6,null);
+            DiagnosticLog.get().record(DiagnosticLog.Event.DNS_AAAA_READY,dnsOperation,host,null,null,0,count6,null);
             List<String> history=new ArrayList<>(result);
             List<String> output=bootstrap.candidates(space,history);
             for(String ip:DirectRoutes.candidates(freshDns,encryptedAnswers,history.subList(0,Math.min(4,history.size()))))
@@ -428,7 +438,7 @@ public final class GoogleNetwork extends Application {
         if(DownloadService.snapshot.active||!health.snapshot().online)return;
         check.start(()->{
             long operation=DiagnosticLog.get().operation(),start=System.nanoTime();DiagnosticLog.get().record(DiagnosticLog.Event.CHECK_BEGIN,operation,null,null,null,0,0,null);
-            try{reset();checkRoutes();DiagnosticLog.get().record(DiagnosticLog.Event.CHECK_OK,operation,null,null,null,DiagnosticLog.elapsed(start),0,null);return summary;}
+            try{if(catalog!=null)catalog.retryRefresh();checkRoutes();DiagnosticLog.get().record(DiagnosticLog.Event.CHECK_OK,operation,null,null,null,DiagnosticLog.elapsed(start),0,null);return summary;}
             catch(IOException|RuntimeException error){DiagnosticLog.get().record(DiagnosticLog.Event.CHECK_FAILED,operation,null,null,null,DiagnosticLog.elapsed(start),0,error);throw error;}
         });
     }
@@ -444,7 +454,7 @@ public final class GoogleNetwork extends Application {
             ConnectionHealth.Ticket ticket=health.begin(ConnectionHealth.service(host),healthEpoch);
             try {
                 if(system){probeService(base.newBuilder().callTimeout(5,TimeUnit.SECONDS).build(),host,null);results.add(host+" · 系统网络验证通过");}
-                else{DirectRoutes.Route route=routes.select(host,Collections.emptySet());health.route(ticket,route);results.add(DirectRoutes.description(route,false));}
+                else{DirectRoutes.Route route=routes.check(host);health.route(ticket,route);results.add(DirectRoutes.description(route,false));}
                 if(Thread.currentThread().isInterrupted())throw new java.io.InterruptedIOException();
                 health.verified(ticket,ConnectionHealth.Evidence.PROBE);
             }

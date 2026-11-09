@@ -16,6 +16,7 @@ import org.json.JSONObject;
 public final class GoogleAddressSpace {
     private final List<long[]> intervals;
     private final List<BigInteger[]> ipv6;
+    public int ipv6IntervalCount(){return ipv6.size();}
     private GoogleAddressSpace(List<long[]> intervals){this(intervals,Collections.emptyList());}
     private GoogleAddressSpace(List<long[]> intervals,List<BigInteger[]> ipv6){this.intervals=intervals;this.ipv6=ipv6;}
     public static GoogleAddressSpace fromBootstrapPrefixes(List<String> prefixes)throws IOException {

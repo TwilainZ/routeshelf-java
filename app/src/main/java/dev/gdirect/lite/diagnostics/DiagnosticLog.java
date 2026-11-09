@@ -12,7 +12,7 @@ import org.json.JSONObject;
 public final class DiagnosticLog {
     public static final int MAX_ENTRIES=512,MAX_BYTES=128*1024;
     public enum Event {
-        APP_START,MODE_GOOGLE_ONLY,MODE_RELAY_ALLOWED,MODE_SYSTEM,NETWORK_CHANGED,NETWORK_LOST,ROUTES_RESET,
+        APP_START,MODE_GOOGLE_ONLY,MODE_RELAY_ALLOWED,MODE_SYSTEM,NETWORK_CHANGED,NETWORK_LOST,ROUTES_RESET,IPV6_STATUS,RANGE_IPV6_READY,DNS_A_READY,DNS_AAAA_READY,
         RANGE_BEGIN,RANGE_READY,RANGE_BOOTSTRAP,RANGE_GOOG_HTTP,RANGE_CLOUD_HTTP,RANGE_FETCH_FAILED,DNS_BEGIN,DNS_READY,DNS_HTTP,DNS_FAILED,SCAN_BEGIN,SCAN_READY,
         SELECT_BEGIN,SELECT_OK,SELECT_FAILED,CACHE_HIT,PREFERRED_BEGIN,PREFERRED_FALLBACK,DISCOVERY_BEGIN,
         PROBE_OK,PROBE_FAILED,PROBE_HTTP,
@@ -99,6 +99,9 @@ public final class DiagnosticLog {
     public String report() {
         String snapshot=encoded();
         StringBuilder out=new StringBuilder("UTC timestamps; op is process-local. Target is a service category, IP is a remote candidate.\n"
+            +"Stored entries may belong to earlier builds/processes. APP_START code is versionCode (0 in older logs).\n"
+            +"IPV6_STATUS code: 0=unknown, 1=offline, 2=no global address, 3=no default route, 4=dual-stack eligible.\n"
+            +"RANGE_IPV6_READY code = allowed IPv6 interval count; DNS_A_READY/DNS_AAAA_READY code = filtered unique address count.\n"
             +"ms = elapsed milliseconds. code = HTTP/Google status, or candidate count for DNS_READY/SCAN_READY.\n"
             +"No account, file names/IDs, URLs, queries, headers, tokens or exception messages are recorded.\nPROBE_HTTP code=401 for DRIVE_API is an expected credential-free probe, not a failed login.\n\n");
         for(String line:snapshot.split("\n"))try {

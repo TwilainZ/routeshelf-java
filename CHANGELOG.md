@@ -6,6 +6,12 @@
 - 重整首页、安装与贡献指南，将 Android 设计、产品范围和旧版本资料归入文档目录。
 - 当前项目自有源码改用 GPL-3.0-only。历史版本的授权、第三方组件条款和 Android 的 Google Play 服务链接例外见 [许可证与归属](docs/LICENSING.md)。
 
+## 0.8.6-connection-preview（versionCode 21）
+
+- 手动检测重新验证缓存路线，不清空全局路线、连接池或网络代次，避免中断正在加载的目录；取消保留健康缓存，真实探测失败再回退。
+- 连接页和脱敏日志明确记录 IPv6 未启用的原因、可用范围和 A/AAAA 候选数量；启动标记记录版本码，导出说明区分保留的旧会话。
+- 底栏与底部系统留白共用同一 Material surfaceContainer 颜色，保留当前主色、应用名、IME 避让及原签名。
+
 ## 0.8.5-ipv6-preview（versionCode 20）
 
 - 独立 Java IPv6 字面量、规范化和官方 Google/Cloud 双栈区间过滤；系统/加密 DNS 加入 AAAA 和 IPv6 DNS 引导。

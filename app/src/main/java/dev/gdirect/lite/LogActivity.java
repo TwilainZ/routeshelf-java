@@ -57,6 +57,7 @@ public final class LogActivity extends AppCompatActivity {
         return "GDirect Lite connection report\nVersion: "+BuildConfig.VERSION_NAME+" ("+BuildConfig.VERSION_CODE+")\nBuild: "+BuildConfig.REVISION
             +"\nPackage: "+getPackageName()+"\nAndroid API: "+android.os.Build.VERSION.SDK_INT
             +"\nMode: "+(net.systemNetwork()?"SYSTEM":net.relayEnabled()?"RELAY_ALLOWED":"GOOGLE_ONLY")
+            +"\nCurrent Android VPN active: "+net.vpnActive()+"\nCurrent IPv6 status: "+net.ipv6Summary()
             +"\nPrivate log storage: "+(net.logStorageAvailable()?"available":"unavailable; memory logs only")
             +"\nRetention: 512 entries / 128 KiB; coalesced writes about 1s. No automatic upload.\n\n"+DiagnosticLog.get().report();
     }

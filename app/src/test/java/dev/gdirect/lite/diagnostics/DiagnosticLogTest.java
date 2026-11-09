@@ -10,6 +10,15 @@ import org.json.JSONObject;
 import org.junit.Test;
 
 public final class DiagnosticLogTest {
+    @Test public void typedIpv6DiagnosticsAndBuildMarkerSurvivePrivateRestore()throws Exception {
+        DiagnosticLog old=new DiagnosticLog();old.record(DiagnosticLog.Event.APP_START,0,null,null,null,0,21,null);
+        old.record(DiagnosticLog.Event.IPV6_STATUS,1,null,null,null,0,3,null);
+        old.record(DiagnosticLog.Event.DNS_AAAA_READY,1,"www.googleapis.com",null,null,0,0,null);
+        DiagnosticLog restored=new DiagnosticLog();restored.restore(old.encoded(),0);
+        assertTrue(restored.report().contains("APP_START target=NONE ms=0 code=21"));
+        assertTrue(restored.report().contains("3=no default route"));assertTrue(restored.report().contains("DNS_AAAA_READY"));
+        assertTrue(restored.report().contains("earlier builds/processes"));
+    }
     @Test public void ipv6CandidatesRemainCanonicalAndScopedPrivateValuesAreRedacted()throws Exception {
         DiagnosticLog log=new DiagnosticLog();
         for(String ip:new String[]{"2001:4860:0:0:0:0:0:8888","fe80::1%wlan0","fc00::1"})
@@ -48,7 +57,7 @@ public final class DiagnosticLogTest {
     }
     @Test public void restoreKeepsCurrentSessionEventsAfterOldRecords() {
         DiagnosticLog old=new DiagnosticLog();old.event(DiagnosticLog.Event.NETWORK_LOST);DiagnosticLog current=new DiagnosticLog();current.event(DiagnosticLog.Event.APP_START);
-        current.restore(old.encoded(),current.clearVersion());assertEquals(2,current.size());assertTrue(current.report().indexOf("NETWORK_LOST")<current.report().indexOf("APP_START"));
+        current.restore(old.encoded(),current.clearVersion());assertEquals(2,current.size());assertTrue(current.report().indexOf("NETWORK_LOST target=")<current.report().indexOf("APP_START target="));
     }
     @Test public void errorCategoriesDoNotRequireProviderMessagesOrStackTraces() {
         assertEquals(DiagnosticLog.Failure.CERTIFICATE,DiagnosticLog.failure(new javax.net.ssl.SSLPeerUnverifiedException("secret")));

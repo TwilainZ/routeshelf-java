@@ -79,6 +79,7 @@ public final class ConnectionActivity extends AppCompatActivity {
         text(api,ConnectionText.service(health.api,false));text(download,ConnectionText.service(health.download,true));color(api,health.api);color(download,health.download);
         text(apiTime,age(health.api));text(downloadTime,age(health.download));
         text(mode,(net.connectionMode()==0?"仅 Google 直连":net.connectionMode()==1?"允许已知第三方中转":"系统网络")
+            +"\n"+net.ipv6Summary()
             +(net.vpnActive()?"\n设备 VPN 已开启，实际流量可能经过 VPN":""));
         boolean connecting=health.api.state==ConnectionHealth.State.CHECKING||health.download.state==ConnectionHealth.State.CHECKING;
         String step;

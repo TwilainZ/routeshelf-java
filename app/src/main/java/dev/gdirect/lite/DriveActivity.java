@@ -208,11 +208,25 @@ public final class DriveActivity extends AppCompatActivity {
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(getWindow(),false);
         LinearLayout container=column();
         container.setBackgroundColor(com.google.android.material.color.MaterialColors.getColor(this,com.google.android.material.R.attr.colorSurface,android.graphics.Color.WHITE));
+        int navigationColor=com.google.android.material.color.MaterialColors.getColor(this,com.google.android.material.R.attr.colorSurfaceContainer,android.graphics.Color.WHITE);
+        View navigationInset=new View(this);
+        navigationInset.setBackgroundColor(navigationColor);
+        navigationInset.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        navigationInset.setLayoutParams(new LinearLayout.LayoutParams(-1,0));
+        getWindow().setNavigationBarColor(navigationColor);
+        getWindow().setNavigationBarDividerColor(navigationColor);
+        getWindow().setNavigationBarContrastEnforced(false);
         container.setOnApplyWindowInsetsListener((view,insets)->{
             android.graphics.Insets bars=android.os.Build.VERSION.SDK_INT>=30
-                ?insets.getInsets(android.view.WindowInsets.Type.systemBars()|android.view.WindowInsets.Type.displayCutout()|android.view.WindowInsets.Type.ime())
+                ?insets.getInsets(android.view.WindowInsets.Type.systemBars()|android.view.WindowInsets.Type.displayCutout())
                 :insets.getSystemWindowInsets();
-            view.setPadding(bars.left,bars.top,bars.right,bars.bottom);return insets.consumeSystemWindowInsets();
+            int keyboard=android.os.Build.VERSION.SDK_INT>=30?insets.getInsets(android.view.WindowInsets.Type.ime()).bottom
+                :(bars.bottom>insets.getStableInsetBottom()?bars.bottom:0);
+            boolean typing=keyboard>bars.bottom||(android.os.Build.VERSION.SDK_INT<30&&keyboard>0);
+            int bottom=typing?0:bars.bottom;
+            android.view.ViewGroup.LayoutParams footer=navigationInset.getLayoutParams();
+            if(footer.height!=bottom){footer.height=bottom;navigationInset.setLayoutParams(footer);}
+            view.setPadding(bars.left,bars.top,bars.right,typing?keyboard:0);return insets.consumeSystemWindowInsets();
         });
         setContentView(container);container.requestApplyInsets();
         com.google.android.material.appbar.MaterialToolbar toolbar=new com.google.android.material.appbar.MaterialToolbar(this);
@@ -344,6 +358,8 @@ public final class DriveActivity extends AppCompatActivity {
         });
         navigation.setOnItemReselectedListener(item->{if(!navigationSelection.isSyncing()&&!loading&&!editing&&DriveSession.INSTANCE.connected())load(false);});
         container.addView(navigation,new LinearLayout.LayoutParams(-1,-2));
+        container.addView(navigationInset);
+        container.requestApplyInsets();
         updateControls();
         if (DriveSession.INSTANCE.connected()) {if(editing)message.setText(R.string.drive_editing);else load(false);}
         else message.setText(GoogleAuthorization.revoking.get()?getString(R.string.drive_revoking):"");
