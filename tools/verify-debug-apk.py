@@ -31,8 +31,8 @@ def command(*parts):
 badging = command(args.aapt2, 'dump', 'badging', str(args.apk))
 package = re.search(r"package: name='([^']+)' versionCode='([^']+)' versionName='([^']+)'", badging)
 expected_package = 'dev.gdirect.lite.probe' if args.probe else ('dev.gdirect.lite.preview' if args.preview else 'dev.gdirect.lite')
-expected_version = '0.2.1-diagnostic-probe' if args.probe else '0.8.4-navigation-preview'
-expected_code = '3' if args.probe else '19'
+expected_version = '0.2.1-diagnostic-probe' if args.probe else '0.8.5-ipv6-preview'
+expected_code = '3' if args.probe else '20'
 if not package or package.groups() != (expected_package, expected_code, expected_version):
     raise SystemExit('APK package or diagnostic version does not match the expected build')
 if args.probe and re.search(r"uses-permission(?:-sdk-\d+)?: name='android.permission.INTERNET'", badging):
@@ -82,7 +82,7 @@ with zipfile.ZipFile(args.apk) as apk:
         required_code.extend(('Ldev/gdirect/lite/auth/AuthorizationCallback;', 'Ldev/gdirect/lite/diagnostics/AppDiagnostics;',
                               'Ldev/gdirect/lite/GoogleNetwork;', 'Ldev/gdirect/lite/network/GoogleBootstrap;', 'Ldev/gdirect/lite/network/DirectRoutes;',
                               'Ldev/gdirect/lite/network/GoogleHttp;', 'Ldev/gdirect/lite/network/GoogleAddressSpace;',
-                              'Ldev/gdirect/lite/network/GoogleRangeCatalog;', 'Ldev/gdirect/lite/network/GoogleFrontendScan;',
+                              'Ldev/gdirect/lite/network/GoogleRangeCatalog;', 'Ldev/gdirect/lite/network/GoogleFrontendScan;', 'Ldev/gdirect/lite/network/IpLiteral;',
                               'Ldev/gdirect/lite/network/GoogleCertificatePolicy;', 'Ldev/gdirect/lite/network/GoogleTrust;', 'Ldev/gdirect/lite/transfer/UploadTransfer;',
                               'Ldev/gdirect/lite/FilePreviewActivity;'))
     if not args.probe:
