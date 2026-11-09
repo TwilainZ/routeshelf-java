@@ -6,6 +6,12 @@
 - 重整首页、安装与贡献指南，将 Android 设计、产品范围和旧版本资料归入文档目录。
 - 当前项目自有源码改用 GPL-3.0-only。历史版本的授权、第三方组件条款和 Android 的 Google Play 服务链接例外见 [许可证与归属](docs/LICENSING.md)。
 
+## 1.0.0-preview（versionCode 22）
+
+- 应用显示名改为 RouteShelf，启动器/标题、通知、隐私说明与日志导出名称同步，交付文件改用 RouteShelf 前缀。
+- 包名、原签名、数据和 Google 授权保持；内部版本码递增以覆盖旧预览版。下载目录仍为 Downloads/GDirect Lite，兼容已有文件。
+- 保留 0.8.6 的 IPv4/IPv6、非破坏性连接检测、状态诊断及底部背景修复。
+
 ## 0.8.6-connection-preview（versionCode 21）
 
 - 手动检测重新验证缓存路线，不清空全局路线、连接池或网络代次，避免中断正在加载的目录；取消保留健康缓存，真实探测失败再回退。

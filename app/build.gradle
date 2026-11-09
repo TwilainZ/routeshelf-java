@@ -16,10 +16,10 @@ android {
         applicationId 'dev.gdirect.lite'
         minSdk 29
         targetSdk 35
-        versionCode 21
-        versionName '0.8.6-connection-preview'
+        versionCode 22
+        versionName '1.0.0-preview'
         buildConfigField 'String', 'REVISION', '"' + buildRevision + '"'
-        resValue 'string', 'app_name', 'GDirect Lite'
+        resValue 'string', 'app_name', 'RouteShelf'
     }
 
     buildFeatures { buildConfig true }
@@ -43,7 +43,7 @@ android {
             applicationIdSuffix '.preview'
             signingConfig signingConfigs.preview
             matchingFallbacks = ['debug']
-            resValue 'string', 'app_name', 'GDirect Lite 测试版'
+            resValue 'string', 'app_name', 'RouteShelf'
         }
     }
     // Compile/lint/test without a private key, but never emit an unsigned or randomly signed preview APK.

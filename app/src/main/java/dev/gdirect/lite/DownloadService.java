@@ -102,7 +102,7 @@ public final class DownloadService extends Service {
     @Override public IBinder onBind(Intent intent) { return null; }
     @Override public void onCreate() {
         super.onCreate();
-        NotificationChannel channel = new NotificationChannel(CHANNEL, "GDirect Lite 文件传输", NotificationManager.IMPORTANCE_LOW);
+        NotificationChannel channel = new NotificationChannel(CHANNEL, "RouteShelf 文件传输", NotificationManager.IMPORTANCE_LOW);
         channel.setDescription("显示文件传输进度");
         getSystemService(NotificationManager.class).createNotificationChannel(channel);
         // No private transfer survives process death. Remove abandoned private temporary content.
@@ -211,7 +211,7 @@ public final class DownloadService extends Service {
             PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         Notification.Builder b = new Notification.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle("GDirect Lite")
+            .setContentTitle(getString(R.string.app_name))
             .setContentText(s.text)
             .setContentIntent(pending)
             .setOngoing(s.active)

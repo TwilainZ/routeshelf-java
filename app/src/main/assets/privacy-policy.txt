@@ -1,4 +1,4 @@
-GDirect Lite 开发预览版隐私说明
+RouteShelf 开发预览版隐私说明
 
 本应用是独立开发的 Google Drive 客户端，没有自建业务服务器、广告或自建分析 SDK。Google 服务和 Google Play 服务按 Google 自己的条款处理相应服务数据。
 

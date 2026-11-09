@@ -31,10 +31,12 @@ def command(*parts):
 badging = command(args.aapt2, 'dump', 'badging', str(args.apk))
 package = re.search(r"package: name='([^']+)' versionCode='([^']+)' versionName='([^']+)'", badging)
 expected_package = 'dev.gdirect.lite.probe' if args.probe else ('dev.gdirect.lite.preview' if args.preview else 'dev.gdirect.lite')
-expected_version = '0.2.1-diagnostic-probe' if args.probe else '0.8.6-connection-preview'
-expected_code = '3' if args.probe else '21'
+expected_version = '0.2.1-diagnostic-probe' if args.probe else '1.0.0-preview'
+expected_code = '3' if args.probe else '22'
 if not package or package.groups() != (expected_package, expected_code, expected_version):
     raise SystemExit('APK package or diagnostic version does not match the expected build')
+if not args.probe and "application-label:'RouteShelf'" not in badging:
+    raise SystemExit('The actual application label is not RouteShelf')
 if args.probe and re.search(r"uses-permission(?:-sdk-\d+)?: name='android.permission.INTERNET'", badging):
     raise SystemExit('Offline package inspector must not request INTERNET permission')
 if args.probe and 'probe_title' not in command(args.aapt2, 'dump', 'resources', str(args.apk)):
@@ -106,9 +108,9 @@ if args.preview:
     pin = json.loads((Path(__file__).resolve().parents[1] / 'config/preview-signing.json').read_text())
     if sha1 != [pin['certificateSha1']] or args.signing_mode != 'pinned-test':
         raise SystemExit('Preview certificate is not the retained pinned test key; refusing delivery')
-    if pin['package'] != expected_package or 'GDirect Lite 测试版' not in badging:
+    if pin['package'] != expected_package or "application-label:'RouteShelf'" not in badging:
         raise SystemExit('Preview identity/launcher label does not match the coexisting application')
-prefix = 'GDirectLite-inspector' if args.probe else ('GDirectLite-preview' if args.preview else 'GDirectLite')
+prefix = 'GDirectLite-inspector' if args.probe else ('RouteShelf-preview' if args.preview else 'RouteShelf')
 filename = f'{prefix}-{package[3]}-{args.revision}-{args.run}.apk'
 expected_files = {filename, 'APK-IDENTITY.json', 'signing-certificate.txt', 'SHA256SUMS'}
 if args.output.exists() and any(path.is_dir() or path.name not in expected_files for path in args.output.iterdir()):
@@ -121,6 +123,8 @@ identity = dict(package=package[1], versionCode=int(package[2]), versionName=pac
                 revision=args.revision, run=args.run, filename=filename,
                 signingMode=args.signing_mode, certificateSha1=sha1, apkSha256=sha256,
                 oldCancellationMessagePresent=False)
+if not args.probe:
+    identity['applicationLabel'] = 'RouteShelf'
 if re.fullmatch(r'[0-9a-f]{40}', args.revision):
     server = os.environ.get('GITHUB_SERVER_URL', 'https://github.com')
     repository = os.environ.get('GITHUB_REPOSITORY', 'qingzhuernest/routeshelf-java')

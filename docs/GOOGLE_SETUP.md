@@ -6,7 +6,7 @@
 
 ## 当前可交付预览身份
 
-- 应用：GDirect Lite 测试版。
+- 应用：RouteShelf（原 GDirect Lite 测试版）。改名不改变已注册的包名或签名。
 - 包名：`dev.gdirect.lite.preview`。
 - 签名 SHA-1：`87:3F:43:45:0A:44:55:5C:74:35:0F:9F:6B:D4:44:F4:9D:53:C9:B4`。
 - 规范值：[config/preview-signing.json](../config/preview-signing.json)。APK-IDENTITY.json 应与实际 APK 相符。

@@ -49,7 +49,7 @@ jobs:
       - uses: actions/upload-artifact@v5
         if: env.GDIRECT_PREVIEW_KEYSTORE_PATH != ''
         with:
-          name: GDirectLite-coexisting-preview-${{ github.run_id }}-${{ github.run_attempt }}
+          name: RouteShelf-preview-${{ github.run_id }}-${{ github.run_attempt }}
           path: app/build/outputs/verified-preview/
           if-no-files-found: error
       - name: Verify packaged version, code, resources, and signer

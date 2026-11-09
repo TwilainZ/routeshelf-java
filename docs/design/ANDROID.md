@@ -24,7 +24,7 @@ values/styles.xml 定义共用 Material 组件样式；values/colors.xml 和 val
 
 保留 Material 按下、禁用、焦点与波纹状态，控件至少 48dp。采用实际系统栏/IME insets、sp 文字、可增长内容及大屏宽度约束。错误和选中态不只靠颜色表达。日志页是工具栏、说明、复制/保存和可选择等宽文本，刷新/清空放菜单，不在阅读时自动整页刷新。
 
-底部系统留白由独立的非交互 View 填充，和 BottomNavigationView 同用 colorSurfaceContainer；页面主体保持 colorSurface。系统导航栏及分隔线同色，避免用户截图中的白色断层。键盘显示时收起该留白，按 IME 高度避让；日夜色值、选中态和按钮颜色保持。本轮为局部底色修复，不改应用显示名或导航层级；新包的设备截图仍待复核。
+底部系统留白由独立的非交互 View 填充，和 BottomNavigationView 同用 colorSurfaceContainer；页面主体保持 colorSurface。系统导航栏及分隔线同色，避免用户截图中的白色断层。键盘显示时收起该留白，按 IME 高度避让；日夜色值、选中态和按钮颜色保持。0.8.6 为局部底色修复；1.0.0-preview 按维护者要求将显示名改为 RouteShelf，主色和导航层级保持，新包的设备截图仍待复核。
 
 参考 Google Material Android 1.13.0 [按钮](https://github.com/material-components/material-components-android/blob/1.13.0/docs/components/Button.md)和[底部导航](https://github.com/material-components/material-components-android/blob/1.13.0/docs/components/BottomNavigation.md)。静态颜色计算中，日夜各 9 组关键文字/背景均超过 4.5:1；主操作为 6.39:1 / 7.50:1，导航容器文字为 13.18:1 / 7.20:1。
 

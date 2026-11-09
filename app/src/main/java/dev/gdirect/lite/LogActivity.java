@@ -45,7 +45,7 @@ public final class LogActivity extends AppCompatActivity {
         LinearLayout.LayoutParams button=new LinearLayout.LayoutParams(0,-2,1);button.setMarginStart(dp(8));actions.addView(save,button);
         save.setOnClickListener(v->{
             pendingExport=report();Intent intent=new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("text/plain")
-                .putExtra(Intent.EXTRA_TITLE,"GDirectLite-log-"+java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").withZone(java.time.ZoneOffset.UTC).format(java.time.Instant.now())+".txt");
+                .putExtra(Intent.EXTRA_TITLE,"RouteShelf-log-"+java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").withZone(java.time.ZoneOffset.UTC).format(java.time.Instant.now())+".txt");
             try{startActivityForResult(intent,SAVE_LOG);}catch(android.content.ActivityNotFoundException error){pendingExport=null;Toast.makeText(this,"未找到文件保存工具，请使用复制日志",Toast.LENGTH_LONG).show();}
         });
         ScrollView scroll=new ScrollView(this);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
@@ -54,7 +54,7 @@ public final class LogActivity extends AppCompatActivity {
     }
     private String report() {
         GoogleNetwork net=GoogleNetwork.get();
-        return "GDirect Lite connection report\nVersion: "+BuildConfig.VERSION_NAME+" ("+BuildConfig.VERSION_CODE+")\nBuild: "+BuildConfig.REVISION
+        return getString(R.string.app_name)+" connection report\nVersion: "+BuildConfig.VERSION_NAME+" ("+BuildConfig.VERSION_CODE+")\nBuild: "+BuildConfig.REVISION
             +"\nPackage: "+getPackageName()+"\nAndroid API: "+android.os.Build.VERSION.SDK_INT
             +"\nMode: "+(net.systemNetwork()?"SYSTEM":net.relayEnabled()?"RELAY_ALLOWED":"GOOGLE_ONLY")
             +"\nCurrent Android VPN active: "+net.vpnActive()+"\nCurrent IPv6 status: "+net.ipv6Summary()
