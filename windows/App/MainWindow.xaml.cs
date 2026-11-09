@@ -53,7 +53,8 @@ public partial class MainWindow : Window
     }
     private void Update() {
         var idle = operation == null;
-        ConfigButton.IsEnabled = LoginButton.IsEnabled = CheckButton.IsEnabled = idle && !connected;
+        ConfigButton.IsEnabled = LoginButton.IsEnabled = idle && !connected;
+        CheckButton.IsEnabled = idle;
         LoginButton.IsEnabled &= config != null;
         LogoutButton.IsEnabled = (connected||hasRememberedProfile) && idle;
         HomeButton.IsEnabled = SearchButton.IsEnabled = SearchText.IsEnabled = RefreshButton.IsEnabled = connected && idle;

@@ -14,7 +14,7 @@ Requires Windows x64, JDK17+ and .NET10 SDK:
 
 Java dependencies are the existing project dependencies, restored from Maven Central with SHA256 pins. On desktop the original JVM test org.json implementation supplies Android's platform JSON API. No runtime, binary, credential or generated output is tracked. The package command builds a self-contained .NET10 application and includes a supplied JDK runtime with its legal notices. Package from a reviewed JDK distribution and provide corresponding source as required by its license. This is an unsigned development preview.
 
-Verified against upstream 0456bf7abb6e0bd204895ec4eb268dfcb8f5069a: 189 shared Java/adapter tests passed (including local IPv4/IPv6 TLS), .NET10 WPF build zero warnings/errors, and21 Windows checks passed including DPAPI, simulated credential restore, stream bounds, dependency tamper rejection and actual Java pipe framing. The check script runs19 in-process assertions; passing a staged application directory to GDirect.Tests.dll additionally enables the two real JVM pipe assertions. No public-IP probing or real-account transfer was performed. Full Android build/Lint, fresh .NET10 CI run, real networks/accounts/downloads and full accessibility acceptance remain pending.
+Verified against upstream 20e872b8b2935521003c98c85a2278a9ed6817a7: 206 Java tests and 21 staged Windows checks passed; .NET 10 WPF builds with zero warnings/errors. See [public download verification](PUBLIC_DOWNLOAD_TEST.md) for real anonymous download results and limitations. Full Android build/Lint, remote CI and broader real-network/account acceptance remain separate checks.
 
 ## Features and data compatibility
 
