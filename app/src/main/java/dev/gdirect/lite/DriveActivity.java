@@ -6,6 +6,7 @@ import dev.gdirect.lite.auth.RememberedAuthorization;
 import dev.gdirect.lite.diagnostics.DiagnosticLog;
 import dev.gdirect.lite.drive.DriveApi;
 import dev.gdirect.lite.drive.DriveListing;
+import dev.gdirect.lite.drive.BrowseReconnect;
 import dev.gdirect.lite.drive.DriveSession;
 import dev.gdirect.lite.drive.MutationCoordinator;
 import dev.gdirect.lite.preview.PreviewPolicy;
@@ -61,6 +62,7 @@ public final class DriveActivity extends AppCompatActivity {
     private static final int AUTHORIZE = 701;
     private final ExecutorService network = Executors.newSingleThreadExecutor();
     private final DriveListing browser = new DriveListing();
+    private final BrowseReconnect reconnect = new BrowseReconnect();
     private final List<DriveApi.FileEntry> files = browser.files;
     private final Deque<String[]> parents = new ArrayDeque<>();
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -102,6 +104,8 @@ public final class DriveActivity extends AppCompatActivity {
             String connectionText=ConnectionText.headline(connectivity.health(),DriveSession.INSTANCE.connected(),
                 !DriveSession.INSTANCE.connected()&&GoogleAuthorization.memory(DriveActivity.this).state()==RememberedAuthorization.State.RESTORING,
                 connectivity.connectionCheck().active());
+            if(DriveSession.INSTANCE.connected()&&reconnect.retryPending()&&connectivity.health().online
+                &&!connectivity.connectionCheck().active())connectionText="连接暂时中断 · 将自动重试";
             if(connectivity.vpnActive())connectionText+=" · VPN 已开启";
             if(!android.text.TextUtils.equals(connectionIndicator.getText(),connectionText))connectionIndicator.setText(connectionText);
             connectionIndicator.setContentDescription(connectionText+"，查看连接状态");
@@ -109,9 +113,7 @@ public final class DriveActivity extends AppCompatActivity {
             if(!authorizing&&!GoogleAuthorization.revoking.get()){
                 RememberedAuthorization memory=GoogleAuthorization.memory(DriveActivity.this);
                 if(!DriveSession.INSTANCE.connected())memory.restore();
-                if(!wasConnected&&DriveSession.INSTANCE.connected()){
-                    authorizationPhase="restored";clearBrowser();load(false);
-                }else if(!DriveSession.INSTANCE.connected()&&memory.state()!=observedRestore){
+                if(!DriveSession.INSTANCE.connected()&&memory.state()!=observedRestore){
                     observedRestore=memory.state();
                     if(observedRestore==RememberedAuthorization.State.RESTORING){authorizationPhase="restoring";message.setText(R.string.drive_restoring);}
                     else if(observedRestore==RememberedAuthorization.State.NEEDS_ACTION){authorizationPhase="restore-required";message.setText(R.string.drive_restore_required);}
@@ -156,6 +158,7 @@ public final class DriveActivity extends AppCompatActivity {
             if(transferActive&&!s.active)refreshAfterTransfer=true;
             if(refreshAfterTransfer&&!loading&&!editing&&DriveSession.INSTANCE.connected()) {refreshAfterTransfer=false;load(false);}
             if (transferActive != s.active) { transferActive = s.active; adapter.notifyDataSetChanged(); }
+            reconnectBrowser();
             handler.postDelayed(this, 500);
         }
     };
@@ -506,6 +509,7 @@ public final class DriveActivity extends AppCompatActivity {
     }
 
     private void clearBrowser() {
+        reconnect.reset();
         requestVersion++;
         if (listing != null) listing.cancel(true);
         loading = false;
@@ -595,10 +599,35 @@ public final class DriveActivity extends AppCompatActivity {
     }
 
     private void load(boolean append) {
+        load(append,false);
+    }
+
+    private void reconnectBrowser(){
+        if(authorizing||GoogleAuthorization.revoking.get()||!DriveSession.INSTANCE.connected())return;
+        GoogleNetwork net=GoogleNetwork.get();
+        dev.gdirect.lite.network.ConnectionHealth.Snapshot health=net.health();
+        dev.gdirect.lite.network.ConnectionCheck.Snapshot check=net.connectionCheck();
+        try {
+            BrowseReconnect.Action action=reconnect.next(DriveSession.INSTANCE.lease().id(),net.healthGeneration(),
+                health.online,loading||editing,check.active(),
+                health.api.state==dev.gdirect.lite.network.ConnectionHealth.State.READY?check.finishedAt:0,
+                android.os.SystemClock.elapsedRealtime());
+            if(action==BrowseReconnect.Action.NONE)return;
+            DiagnosticLog.get().record(DiagnosticLog.Event.BROWSE_AUTOCONNECT,0,"www.googleapis.com",null,null,0,action.ordinal(),null);
+            if(action==BrowseReconnect.Action.SESSION){authorizationPhase="restored";clearBrowser();}
+            boolean append=(action==BrowseReconnect.Action.RETRY||action==BrowseReconnect.Action.CHECK)&&retryAppend;
+            load(append,true);
+        }catch(DriveSession.AuthorizationRequired expired){clearBrowser();}
+    }
+
+    private void load(boolean append,boolean automatic) {
         if(editing)return;
         DriveSession.Lease lease;
         try { lease = DriveSession.INSTANCE.lease(); }
         catch (DriveSession.AuthorizationRequired error) { clearBrowser(); return; }
+        GoogleNetwork net=GoogleNetwork.get();
+        net.health(); // Observe the live path before binding this listing attempt to its generation.
+        reconnect.started(lease.id(),net.healthGeneration(),net.connectionCheck().finishedAt,automatic);
         int version = ++requestVersion;
         if (listing != null) listing.cancel(true);
         String queryFolder = folder, query = activeSearch;
@@ -618,18 +647,22 @@ public final class DriveActivity extends AppCompatActivity {
                     if (isDestroyed() || version != requestVersion) return;
                     try { lease.requireCurrent(); } catch (DriveSession.AuthorizationRequired error) { clearBrowser(); return; }
                     try{browser.accept(result);}catch(IOException invalid){
+                        reconnect.failed(false,android.os.SystemClock.elapsedRealtime());
                         loading=false;listingFailed=true;updateControls();message.setText(invalid.getMessage());return;
                     }
                     nextPage = browser.next();
+                    reconnect.succeeded();
                     loading = false; adapter.notifyDataSetChanged(); updateControls();
                     message.setText(files.isEmpty() ? getString(R.string.drive_empty) : "");
                     DiagnosticLog.get().record(DiagnosticLog.Event.LIST_DISPLAYED,logOperation,"www.googleapis.com",null,null,DiagnosticLog.elapsed(logStart),0,null);
                 });
             } catch (IOException error) {
                 DiagnosticLog.get().record(DiagnosticLog.Event.LIST_FAILED,logOperation,"www.googleapis.com",null,null,DiagnosticLog.elapsed(logStart),0,error);
+                boolean transientFailure=BrowseReconnect.transientFailure(error,GoogleNetwork.get().health().api);
                 handler.post(() -> {
                     if (isDestroyed() || version != requestVersion) return;
                     if (!DriveSession.INSTANCE.connected()) clearBrowser();
+                    reconnect.failed(transientFailure,android.os.SystemClock.elapsedRealtime());
                     loading = false; listingFailed=DriveSession.INSTANCE.connected(); updateControls();
                     message.setText(error.getMessage());
                 });

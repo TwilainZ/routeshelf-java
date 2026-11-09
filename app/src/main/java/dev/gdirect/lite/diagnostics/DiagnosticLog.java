@@ -20,7 +20,7 @@ public final class DiagnosticLog {
         CHECK_BEGIN,CHECK_CANCEL,CHECK_OK,CHECK_FAILED,
         AUTH_BEGIN,AUTH_CALLBACK,AUTH_OK,AUTH_FAILED,ACCOUNT_DISCONNECTED,
         AUTH_RESTORE_BEGIN,AUTH_RESTORE_OK,AUTH_RESTORE_REQUIRED,AUTH_RESTORE_FAILED,
-        LIST_BEGIN,LIST_READY,LIST_DISPLAYED,LIST_FAILED,
+        LIST_BEGIN,LIST_READY,LIST_DISPLAYED,LIST_FAILED,BROWSE_AUTOCONNECT,
         UPLOAD_BEGIN,DOWNLOAD_BEGIN,TRANSFER_OK,TRANSFER_FAILED,TRANSFER_CANCELLED
     }
     public enum Target { NONE,DRIVE_API,DRIVE_CONTENT,GOOGLE_DNS,GOOGLE_RANGES,OTHER }
@@ -102,6 +102,7 @@ public final class DiagnosticLog {
             +"Stored entries may belong to earlier builds/processes. APP_START code is versionCode (0 in older logs).\n"
             +"IPV6_STATUS code: 0=unknown, 1=offline, 2=no global address, 3=no default route, 4=dual-stack eligible.\n"
             +"RANGE_IPV6_READY code = allowed IPv6 interval count; DNS_A_READY/DNS_AAAA_READY code = filtered unique address count.\n"
+            +"BROWSE_AUTOCONNECT code: 1=restored session, 2=network change, 3=bounded retry, 4=completed route check.\n"
             +"ms = elapsed milliseconds. code = HTTP/Google status, or candidate count for DNS_READY/SCAN_READY.\n"
             +"No account, file names/IDs, URLs, queries, headers, tokens or exception messages are recorded.\nPROBE_HTTP code=401 for DRIVE_API is an expected credential-free probe, not a failed login.\n\n");
         for(String line:snapshot.split("\n"))try {
